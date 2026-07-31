@@ -136,28 +136,25 @@ The self-contained release includes all required .NET components.
 
 ## Current Release
 
-### PinWindow v3.3.1
+### PinWindow v3.3.2
 
 Changes in this release:
 
-- Updated the system tray icon
-- Updated the executable file icon
-- Improved icon visibility at small sizes
-- Added multiple icon resolutions for Windows
-- Improved the visual appearance of the tray icon
+- Fixed an issue where the pin button could remain hidden after switching from Word, VS Code, or another unsupported window
+- Added automatic recovery of the pin button without restarting PinWindow
 
 ## SHA-256 Checksum
 
 The SHA-256 checksum for the current release is:
 
 ```text
-43f83bd4c69dce7321956f88eaab4bb418513ad6bd1dff51b483f79ec6cb4955
+D75DD20325F2F44CED8644CD37F06D99CE262EF07091CA6DDE18F8863351D637
 ```
 
 The checksum applies to:
 
 ```text
-PinWindow-v3.3.1-win-x64.exe
+PinWindow-v3.3.2-win-x64.exe
 ```
 
 ## Verify the Download
@@ -165,19 +162,19 @@ PinWindow-v3.3.1-win-x64.exe
 Open PowerShell in the folder containing the downloaded file and run:
 
 ```powershell
-Get-FileHash ".\PinWindow-v3.3.1-win-x64.exe" -Algorithm SHA256
+Get-FileHash ".\PinWindow-v3.3.2-win-x64.exe" -Algorithm SHA256
 ```
 
 The returned hash should match:
 
 ```text
-43f83bd4c69dce7321956f88eaab4bb418513ad6bd1dff51b483f79ec6cb4955
+D75DD20325F2F44CED8644CD37F06D99CE262EF07091CA6DDE18F8863351D637
 ```
 
 You can also use the Windows `certutil` command:
 
 ```powershell
-certutil -hashfile "PinWindow-v3.3.1-win-x64.exe" SHA256
+certutil -hashfile "PinWindow-v3.3.2-win-x64.exe" SHA256
 ```
 
 ## Source Code

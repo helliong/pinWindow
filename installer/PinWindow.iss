@@ -1,6 +1,6 @@
 #define MyAppName "PinWindow"
 #ifndef MyAppVersion
-  #define MyAppVersion "3.3.1"
+  #define MyAppVersion "3.3.2"
 #endif
 #define MyAppPublisher "helliong"
 #define MyAppExeName "PinWindow.exe"

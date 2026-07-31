@@ -10,3 +10,5 @@ PinWindowSetup-v*-win-x64.exe
 
 # Generated installer artifacts
 artifacts/
+
+.config

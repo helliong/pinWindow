@@ -21,7 +21,8 @@ internal static class Program
         using var mutex = new Mutex(
             initiallyOwned: true,
             name: MutexName,
-            createdNew: out var isFirstInstance);
+            createdNew: out var isFirstInstance
+        );
 
         if (!isFirstInstance)
         {
@@ -29,7 +30,8 @@ internal static class Program
                 "PinWindow уже запущен. Найдите его значок в системном трее.",
                 "PinWindow",
                 MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+                MessageBoxIcon.Information
+            );
             return;
         }
 
@@ -43,7 +45,8 @@ internal static class Program
                 exception.ToString(),
                 "Ошибка PinWindow",
                 MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
+                MessageBoxIcon.Error
+            );
         }
     }
 }
@@ -73,30 +76,20 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _toggleWindowItem = new ToolStripMenuItem(
             "Закрепить/открепить активное окно",
             null,
-            (_, _) => ToggleForegroundWindow());
+            (_, _) => ToggleForegroundWindow()
+        );
 
-        _settingsItem = new ToolStripMenuItem(
-            "Настройки…",
-            null,
-            (_, _) => OpenSettings());
+        _settingsItem = new ToolStripMenuItem("Настройки…", null, (_, _) => OpenSettings());
 
-        _showButtonItem = new ToolStripMenuItem(
-            "Показывать кнопку у активного окна")
+        _showButtonItem = new ToolStripMenuItem("Показывать кнопку у активного окна")
         {
-            CheckOnClick = true
+            CheckOnClick = true,
         };
-        _showButtonItem.CheckedChanged += (_, _) =>
-            ToggleButtonVisibilityFromMenu();
+        _showButtonItem.CheckedChanged += (_, _) => ToggleButtonVisibilityFromMenu();
 
-        _hotkeyLabel = new ToolStripMenuItem
-        {
-            Enabled = false
-        };
+        _hotkeyLabel = new ToolStripMenuItem { Enabled = false };
 
-        _exitItem = new ToolStripMenuItem(
-            "Выход",
-            null,
-            (_, _) => ExitThread());
+        _exitItem = new ToolStripMenuItem("Выход", null, (_, _) => ExitThread());
 
         menu.Items.Add(_toggleWindowItem);
         menu.Items.Add(_settingsItem);
@@ -113,17 +106,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
             Icon = _appIcon,
             Text = "PinWindow — закрепление окон",
             ContextMenuStrip = menu,
-            Visible = true
+            Visible = true,
         };
         _notifyIcon.DoubleClick += (_, _) => OpenSettings();
 
-        _pinController = new PinController(
-            _settings,
-            ShowResult);
+        _pinController = new PinController(_settings, ShowResult);
 
-        _hotkeyWindow = new HotkeyWindow(
-            ToggleForegroundWindow,
-            _settings.GetHotkey());
+        _hotkeyWindow = new HotkeyWindow(ToggleForegroundWindow, _settings.GetHotkey());
 
         UpdateMenuFromSettings();
 
@@ -133,7 +122,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 2600,
                 "PinWindow запущен",
                 $"Откройте настройки двойным кликом по значку в трее. Горячая клавиша: {_settings.GetHotkey().DisplayText}.",
-                ToolTipIcon.Info);
+                ToolTipIcon.Info
+            );
         }
     }
 
@@ -141,8 +131,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         try
         {
-            using var extractedIcon =
-                Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            using var extractedIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
 
             return extractedIcon is not null
                 ? (Icon)extractedIcon.Clone()
@@ -177,12 +166,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
             return;
         }
 
-        _settingsForm = new SettingsForm(
-            _settings,
-            ApplySettings);
+        _settingsForm = new SettingsForm(_settings, ApplySettings);
 
-        _settingsForm.FormClosed += (_, _) =>
-            _settingsForm = null;
+        _settingsForm.FormClosed += (_, _) => _settingsForm = null;
 
         _settingsForm.Show();
         _settingsForm.Activate();
@@ -196,11 +182,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         try
         {
-            _hotkeyWindow.UpdateHotkey(
-                requestedSettings.GetHotkey());
+            _hotkeyWindow.UpdateHotkey(requestedSettings.GetHotkey());
 
-            AutostartManager.SetEnabled(
-                requestedSettings.StartWithWindows);
+            AutostartManager.SetEnabled(requestedSettings.StartWithWindows);
 
             SettingsStore.Save(requestedSettings);
             _settings = requestedSettings.Clone();
@@ -214,7 +198,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
                     1500,
                     "PinWindow",
                     "Настройки сохранены.",
-                    ToolTipIcon.Info);
+                    ToolTipIcon.Info
+                );
             }
 
             return null;
@@ -223,11 +208,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             try
             {
-                _hotkeyWindow.UpdateHotkey(
-                    previousSettings.GetHotkey());
+                _hotkeyWindow.UpdateHotkey(previousSettings.GetHotkey());
 
-                AutostartManager.SetEnabled(
-                    previousSettings.StartWithWindows);
+                AutostartManager.SetEnabled(previousSettings.StartWithWindows);
             }
             catch
             {
@@ -258,7 +241,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 exception.Message,
                 "PinWindow",
                 MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
+                MessageBoxIcon.Error
+            );
         }
     }
 
@@ -269,8 +253,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         try
         {
             _showButtonItem.Checked = _settings.ShowButton;
-            _hotkeyLabel.Text =
-                $"Горячая клавиша: {_settings.GetHotkey().DisplayText}";
+            _hotkeyLabel.Text = $"Горячая клавиша: {_settings.GetHotkey().DisplayText}";
         }
         finally
         {
@@ -289,7 +272,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             1300,
             result.Success ? "PinWindow" : "Не удалось изменить окно",
             result.Message,
-            result.Success ? ToolTipIcon.Info : ToolTipIcon.Error);
+            result.Success ? ToolTipIcon.Info : ToolTipIcon.Error
+        );
     }
 
     protected override void ExitThreadCore()
@@ -312,6 +296,7 @@ internal sealed class PinController : IDisposable
     private readonly WinEventMonitor _eventMonitor;
     private readonly System.Windows.Forms.Timer _moveTimer;
     private readonly System.Windows.Forms.Timer _settleTimer;
+    private readonly System.Windows.Forms.Timer _recoveryTimer;
 
     private IntPtr _targetWindow;
     private bool _enabled;
@@ -319,26 +304,15 @@ internal sealed class PinController : IDisposable
     private int _refreshPosted;
     private int _settleAttemptsRemaining;
 
-    public PinController(
-        AppSettings settings,
-        Action<ToggleResult> showResult)
+    public PinController(AppSettings settings, Action<ToggleResult> showResult)
     {
         _enabled = settings.ShowButton;
-        _overlay = new PinOverlayForm(
-            ToggleTargetWindow,
-            showResult,
-            settings);
+        _overlay = new PinOverlayForm(ToggleTargetWindow, showResult, settings);
 
-        _moveTimer = new System.Windows.Forms.Timer
-        {
-            Interval = 16
-        };
+        _moveTimer = new System.Windows.Forms.Timer { Interval = 16 };
         _moveTimer.Tick += (_, _) => UpdateOverlayPosition();
 
-        _settleTimer = new System.Windows.Forms.Timer
-        {
-            Interval = 45
-        };
+        _settleTimer = new System.Windows.Forms.Timer { Interval = 45 };
         _settleTimer.Tick += (_, _) =>
         {
             UpdateOverlayPosition();
@@ -350,11 +324,27 @@ internal sealed class PinController : IDisposable
                 _settleTimer.Stop();
             }
         };
+        _recoveryTimer = new System.Windows.Forms.Timer { Interval = 500 };
 
+        _recoveryTimer.Tick += (_, _) =>
+        {
+            if (!_enabled || _disposed)
+            {
+                return;
+            }
+
+            var foregroundWindow = NativeMethods.GetForegroundWindow();
+
+            if (foregroundWindow != _targetWindow || !_overlay.IsOverlayVisible)
+            {
+                RefreshNow();
+            }
+        };
         _eventMonitor = new WinEventMonitor(OnWinEvent);
 
         if (_enabled)
         {
+            _recoveryTimer.Start();
             RefreshNow();
         }
     }
@@ -373,10 +363,12 @@ internal sealed class PinController : IDisposable
 
             if (_enabled)
             {
+                _recoveryTimer.Start();
                 RefreshNow();
             }
             else
             {
+                _recoveryTimer.Stop();
                 _moveTimer.Stop();
                 _settleTimer.Stop();
                 _settleAttemptsRemaining = 0;
@@ -431,10 +423,7 @@ internal sealed class PinController : IDisposable
         return result;
     }
 
-    private void OnWinEvent(
-        uint eventType,
-        IntPtr window,
-        int objectId)
+    private void OnWinEvent(uint eventType, IntPtr window, int objectId)
     {
         if (_disposed || !_enabled)
         {
@@ -515,9 +504,7 @@ internal sealed class PinController : IDisposable
             return;
         }
 
-        _settleAttemptsRemaining = Math.Max(
-            _settleAttemptsRemaining,
-            attempts);
+        _settleAttemptsRemaining = Math.Max(_settleAttemptsRemaining, attempts);
 
         if (!_settleTimer.Enabled)
         {
@@ -550,9 +537,7 @@ internal sealed class PinController : IDisposable
 
     private void PostToUi(Action action)
     {
-        if (_disposed ||
-            !_overlay.IsHandleCreated ||
-            _overlay.IsDisposed)
+        if (_disposed || !_overlay.IsHandleCreated || _overlay.IsDisposed)
         {
             return;
         }
@@ -574,8 +559,7 @@ internal sealed class PinController : IDisposable
             return;
         }
 
-        if (_targetWindow == IntPtr.Zero ||
-            !WindowFiltering.IsEligible(_targetWindow))
+        if (_targetWindow == IntPtr.Zero || !WindowFiltering.IsEligible(_targetWindow))
         {
             _overlay.HideOverlay();
             return;
@@ -598,6 +582,9 @@ internal sealed class PinController : IDisposable
 
         _settleTimer.Stop();
         _settleTimer.Dispose();
+
+        _recoveryTimer.Stop();
+        _recoveryTimer.Dispose();
 
         _eventMonitor.Dispose();
         _overlay.Dispose();
@@ -631,7 +618,8 @@ internal sealed class PinOverlayForm : Form
     public PinOverlayForm(
         Func<ToggleResult> toggleTarget,
         Action<ToggleResult> showResult,
-        AppSettings settings)
+        AppSettings settings
+    )
     {
         _toggleTarget = toggleTarget;
         _showResult = showResult;
@@ -649,12 +637,13 @@ internal sealed class PinOverlayForm : Form
             InitialDelay = 350,
             ReshowDelay = 100,
             AutoPopDelay = 4500,
-            ShowAlways = true
+            ShowAlways = true,
         };
 
         _ = Handle;
     }
 
+    public bool IsOverlayVisible => IsHandleCreated && NativeMethods.IsWindowVisible(Handle);
     protected override bool ShowWithoutActivation => true;
 
     protected override CreateParams CreateParams
@@ -662,10 +651,7 @@ internal sealed class PinOverlayForm : Form
         get
         {
             var parameters = base.CreateParams;
-            parameters.ExStyle |=
-                WsExLayered |
-                WsExToolWindow |
-                WsExNoActivate;
+            parameters.ExStyle |= WsExLayered | WsExToolWindow | WsExNoActivate;
             return parameters;
         }
     }
@@ -688,9 +674,7 @@ internal sealed class PinOverlayForm : Form
 
         if (targetWindow != IntPtr.Zero)
         {
-            NativeMethods.SetWindowOwner(
-                Handle,
-                targetWindow);
+            NativeMethods.SetWindowOwner(Handle, targetWindow);
         }
 
         UpdateFromTarget();
@@ -698,19 +682,21 @@ internal sealed class PinOverlayForm : Form
 
     public void UpdateFromTarget()
     {
-        if (_targetWindow == IntPtr.Zero ||
-            !NativeMethods.IsWindow(_targetWindow))
+        if (_targetWindow == IntPtr.Zero || !NativeMethods.IsWindow(_targetWindow))
         {
             HideOverlay();
             return;
         }
 
-        if (!WindowOverlayGeometry.TryGetButtonBounds(
+        if (
+            !WindowOverlayGeometry.TryGetButtonBounds(
                 _targetWindow,
                 _visualStyle,
                 _settings,
                 out var bounds,
-                out var isDarkTitleBar))
+                out var isDarkTitleBar
+            )
+        )
         {
             HideOverlay();
             return;
@@ -722,15 +708,9 @@ internal sealed class PinOverlayForm : Form
 
         // При максимизации Windows может пересобрать non-client area
         // и временно изменить порядок owned-окон.
-        NativeMethods.SetWindowOwner(
-            Handle,
-            _targetWindow);
+        NativeMethods.SetWindowOwner(Handle, _targetWindow);
 
-        _toolTip.SetToolTip(
-            this,
-            _isPinned
-                ? "Открепить окно"
-                : "Закрепить поверх остальных окон");
+        _toolTip.SetToolTip(this, _isPinned ? "Открепить окно" : "Закрепить поверх остальных окон");
 
         RenderLayeredWindow(bounds);
 
@@ -743,17 +723,16 @@ internal sealed class PinOverlayForm : Form
             0,
             0,
             0,
-            NativeMethods.SwpNoMove |
-            NativeMethods.SwpNoSize |
-            NativeMethods.SwpNoActivate |
-            NativeMethods.SwpShowWindow |
-            NativeMethods.SwpNoOwnerZOrder);
+            NativeMethods.SwpNoMove
+                | NativeMethods.SwpNoSize
+                | NativeMethods.SwpNoActivate
+                | NativeMethods.SwpShowWindow
+                | NativeMethods.SwpNoOwnerZOrder
+        );
 
         if (!Visible)
         {
-            NativeMethods.ShowWindow(
-                Handle,
-                NativeMethods.SwShowNoActivate);
+            NativeMethods.ShowWindow(Handle, NativeMethods.SwShowNoActivate);
         }
     }
 
@@ -761,9 +740,7 @@ internal sealed class PinOverlayForm : Form
     {
         if (IsHandleCreated && Visible)
         {
-            NativeMethods.ShowWindow(
-                Handle,
-                NativeMethods.SwHide);
+            NativeMethods.ShowWindow(Handle, NativeMethods.SwHide);
         }
     }
 
@@ -836,10 +813,7 @@ internal sealed class PinOverlayForm : Form
             return;
         }
 
-        using var bitmap = new Bitmap(
-            bounds.Width,
-            bounds.Height,
-            PixelFormat.Format32bppArgb);
+        using var bitmap = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
 
         using (var graphics = Graphics.FromImage(bitmap))
         {
@@ -867,33 +841,28 @@ internal sealed class PinOverlayForm : Form
 
         if (_isHovered)
         {
-            var hoverSize = Math.Min(
-                size.Width,
-                size.Height) - 4f * scale;
+            var hoverSize = Math.Min(size.Width, size.Height) - 4f * scale;
 
             var hoverRectangle = new RectangleF(
                 centerX - hoverSize / 2f,
                 centerY - hoverSize / 2f,
                 hoverSize,
-                hoverSize);
+                hoverSize
+            );
 
             var hoverColor = _isDarkTitleBar
                 ? Color.FromArgb(46, 255, 255, 255)
                 : Color.FromArgb(34, 0, 0, 0);
 
-            using var hoverBrush =
-                new SolidBrush(hoverColor);
+            using var hoverBrush = new SolidBrush(hoverColor);
 
-            graphics.FillEllipse(
-                hoverBrush,
-                hoverRectangle);
+            graphics.FillEllipse(hoverBrush, hoverRectangle);
         }
 
-        var iconColor = _isPinned
-            ? _activeColor
-            : _isDarkTitleBar
-                ? Color.FromArgb(235, 245, 245, 247)
-                : Color.FromArgb(220, 42, 42, 46);
+        var iconColor =
+            _isPinned ? _activeColor
+            : _isDarkTitleBar ? Color.FromArgb(235, 245, 245, 247)
+            : Color.FromArgb(220, 42, 42, 46);
 
         var shadowColor = _isDarkTitleBar
             ? Color.FromArgb(90, 0, 0, 0)
@@ -906,7 +875,8 @@ internal sealed class PinOverlayForm : Form
             scale,
             shadowColor,
             filled: _isPinned,
-            thicknessMultiplier: 1.65f);
+            thicknessMultiplier: 1.65f
+        );
 
         DrawPin(
             graphics,
@@ -915,50 +885,33 @@ internal sealed class PinOverlayForm : Form
             scale,
             iconColor,
             filled: _isPinned,
-            thicknessMultiplier: 1f);
+            thicknessMultiplier: 1f
+        );
     }
 
-    private void DrawTelegramButton(
-        Graphics graphics,
-        Size size)
+    private void DrawTelegramButton(Graphics graphics, Size size)
     {
         var centerX = size.Width / 2f;
         var centerY = size.Height / 2f;
-        var scale = Math.Max(
-            0.68f,
-            Math.Min(0.92f, size.Width / 35f));
+        var scale = Math.Max(0.68f, Math.Min(0.92f, size.Width / 35f));
 
         if (_isHovered)
         {
-            var hoverRectangle = new RectangleF(
-                1f,
-                1f,
-                size.Width - 2f,
-                size.Height - 2f);
+            var hoverRectangle = new RectangleF(1f, 1f, size.Width - 2f, size.Height - 2f);
 
             using var hoverPath = CreateRoundedRectanglePath(
                 hoverRectangle,
-                Math.Max(3f, size.Width * 0.14f));
+                Math.Max(3f, size.Width * 0.14f)
+            );
 
-            using var hoverBrush = new SolidBrush(
-                Color.FromArgb(28, 255, 255, 255));
+            using var hoverBrush = new SolidBrush(Color.FromArgb(28, 255, 255, 255));
 
-            graphics.FillPath(
-                hoverBrush,
-                hoverPath);
+            graphics.FillPath(hoverBrush, hoverPath);
         }
 
-        var iconColor = _isPinned
-            ? _activeColor
-            : Color.FromArgb(165, 167, 184, 201);
+        var iconColor = _isPinned ? _activeColor : Color.FromArgb(165, 167, 184, 201);
 
-        DrawCompactPin(
-            graphics,
-            centerX,
-            centerY + 0.2f,
-            scale,
-            iconColor,
-            _isPinned);
+        DrawCompactPin(graphics, centerX, centerY + 0.2f, scale, iconColor, _isPinned);
     }
 
     private static void DrawCompactPin(
@@ -967,15 +920,14 @@ internal sealed class PinOverlayForm : Form
         float centerY,
         float scale,
         Color color,
-        bool filled)
+        bool filled
+    )
     {
-        using var pen = new Pen(
-            color,
-            Math.Max(1.15f, 1.35f * scale))
+        using var pen = new Pen(color, Math.Max(1.15f, 1.35f * scale))
         {
             StartCap = LineCap.Round,
             EndCap = LineCap.Round,
-            LineJoin = LineJoin.Round
+            LineJoin = LineJoin.Round,
         };
 
         using var brush = new SolidBrush(color);
@@ -987,7 +939,8 @@ internal sealed class PinOverlayForm : Form
             centerX - headWidth / 2f,
             centerY - 6.5f * scale,
             headWidth,
-            headHeight);
+            headHeight
+        );
 
         if (filled)
         {
@@ -995,68 +948,29 @@ internal sealed class PinOverlayForm : Form
         }
         else
         {
-            graphics.DrawRectangle(
-                pen,
-                head.X,
-                head.Y,
-                head.Width,
-                head.Height);
+            graphics.DrawRectangle(pen, head.X, head.Y, head.Width, head.Height);
         }
 
         var shoulderY = centerY - 2.3f * scale;
         var baseY = centerY + 2.4f * scale;
 
-        graphics.DrawLine(
-            pen,
-            centerX - 3.2f * scale,
-            shoulderY,
-            centerX - 4.6f * scale,
-            baseY);
+        graphics.DrawLine(pen, centerX - 3.2f * scale, shoulderY, centerX - 4.6f * scale, baseY);
 
-        graphics.DrawLine(
-            pen,
-            centerX + 3.2f * scale,
-            shoulderY,
-            centerX + 4.6f * scale,
-            baseY);
+        graphics.DrawLine(pen, centerX + 3.2f * scale, shoulderY, centerX + 4.6f * scale, baseY);
 
-        graphics.DrawLine(
-            pen,
-            centerX - 4.6f * scale,
-            baseY,
-            centerX + 4.6f * scale,
-            baseY);
+        graphics.DrawLine(pen, centerX - 4.6f * scale, baseY, centerX + 4.6f * scale, baseY);
 
-        graphics.DrawLine(
-            pen,
-            centerX,
-            baseY,
-            centerX,
-            centerY + 7.6f * scale);
+        graphics.DrawLine(pen, centerX, baseY, centerX, centerY + 7.6f * scale);
     }
 
-    private static GraphicsPath CreateRoundedRectanglePath(
-        RectangleF rectangle,
-        float radius)
+    private static GraphicsPath CreateRoundedRectanglePath(RectangleF rectangle, float radius)
     {
         var diameter = radius * 2f;
         var path = new GraphicsPath();
 
-        path.AddArc(
-            rectangle.Left,
-            rectangle.Top,
-            diameter,
-            diameter,
-            180,
-            90);
+        path.AddArc(rectangle.Left, rectangle.Top, diameter, diameter, 180, 90);
 
-        path.AddArc(
-            rectangle.Right - diameter,
-            rectangle.Top,
-            diameter,
-            diameter,
-            270,
-            90);
+        path.AddArc(rectangle.Right - diameter, rectangle.Top, diameter, diameter, 270, 90);
 
         path.AddArc(
             rectangle.Right - diameter,
@@ -1064,15 +978,10 @@ internal sealed class PinOverlayForm : Form
             diameter,
             diameter,
             0,
-            90);
+            90
+        );
 
-        path.AddArc(
-            rectangle.Left,
-            rectangle.Bottom - diameter,
-            diameter,
-            diameter,
-            90,
-            90);
+        path.AddArc(rectangle.Left, rectangle.Bottom - diameter, diameter, diameter, 90, 90);
 
         path.CloseFigure();
         return path;
@@ -1085,17 +994,14 @@ internal sealed class PinOverlayForm : Form
         float scale,
         Color color,
         bool filled,
-        float thicknessMultiplier)
+        float thicknessMultiplier
+    )
     {
-        using var pen = new Pen(
-            color,
-            Math.Max(
-                1.45f,
-                1.65f * scale * thicknessMultiplier))
+        using var pen = new Pen(color, Math.Max(1.45f, 1.65f * scale * thicknessMultiplier))
         {
             StartCap = LineCap.Round,
             EndCap = LineCap.Round,
-            LineJoin = LineJoin.Round
+            LineJoin = LineJoin.Round,
         };
 
         using var brush = new SolidBrush(color);
@@ -1107,7 +1013,8 @@ internal sealed class PinOverlayForm : Form
             centerX - headWidth / 2f,
             centerY - 7.3f * scale,
             headWidth,
-            headHeight);
+            headHeight
+        );
 
         if (filled)
         {
@@ -1115,12 +1022,7 @@ internal sealed class PinOverlayForm : Form
         }
         else
         {
-            graphics.DrawRectangle(
-                pen,
-                head.X,
-                head.Y,
-                head.Width,
-                head.Height);
+            graphics.DrawRectangle(pen, head.X, head.Y, head.Width, head.Height);
         }
 
         var shoulderY = centerY - 2.7f * scale;
@@ -1130,65 +1032,33 @@ internal sealed class PinOverlayForm : Form
         var leftBaseX = centerX - 5.5f * scale;
         var rightBaseX = centerX + 5.5f * scale;
 
-        graphics.DrawLine(
-            pen,
-            leftShoulderX,
-            shoulderY,
-            leftBaseX,
-            baseY);
+        graphics.DrawLine(pen, leftShoulderX, shoulderY, leftBaseX, baseY);
 
-        graphics.DrawLine(
-            pen,
-            rightShoulderX,
-            shoulderY,
-            rightBaseX,
-            baseY);
+        graphics.DrawLine(pen, rightShoulderX, shoulderY, rightBaseX, baseY);
 
-        graphics.DrawLine(
-            pen,
-            leftBaseX,
-            baseY,
-            rightBaseX,
-            baseY);
+        graphics.DrawLine(pen, leftBaseX, baseY, rightBaseX, baseY);
 
-        graphics.DrawLine(
-            pen,
-            centerX,
-            baseY,
-            centerX,
-            centerY + 9.3f * scale);
+        graphics.DrawLine(pen, centerX, baseY, centerX, centerY + 9.3f * scale);
     }
 
-    private void UpdateLayeredBitmap(
-        Bitmap bitmap,
-        Rectangle bounds)
+    private void UpdateLayeredBitmap(Bitmap bitmap, Rectangle bounds)
     {
-        var screenDeviceContext =
-            NativeMethods.GetDC(IntPtr.Zero);
+        var screenDeviceContext = NativeMethods.GetDC(IntPtr.Zero);
 
-        var memoryDeviceContext =
-            NativeMethods.CreateCompatibleDC(
-                screenDeviceContext);
+        var memoryDeviceContext = NativeMethods.CreateCompatibleDC(screenDeviceContext);
 
         IntPtr bitmapHandle = IntPtr.Zero;
         IntPtr oldBitmap = IntPtr.Zero;
 
         try
         {
-            bitmapHandle = bitmap.GetHbitmap(
-                Color.FromArgb(0));
+            bitmapHandle = bitmap.GetHbitmap(Color.FromArgb(0));
 
-            oldBitmap = NativeMethods.SelectObject(
-                memoryDeviceContext,
-                bitmapHandle);
+            oldBitmap = NativeMethods.SelectObject(memoryDeviceContext, bitmapHandle);
 
-            var destination = new NativeMethods.Point(
-                bounds.Left,
-                bounds.Top);
+            var destination = new NativeMethods.Point(bounds.Left, bounds.Top);
 
-            var size = new NativeMethods.Size(
-                bounds.Width,
-                bounds.Height);
+            var size = new NativeMethods.Size(bounds.Width, bounds.Height);
 
             var source = new NativeMethods.Point(0, 0);
 
@@ -1197,7 +1067,7 @@ internal sealed class PinOverlayForm : Form
                 BlendOp = NativeMethods.AcSrcOver,
                 BlendFlags = 0,
                 SourceConstantAlpha = 255,
-                AlphaFormat = NativeMethods.AcSrcAlpha
+                AlphaFormat = NativeMethods.AcSrcAlpha,
             };
 
             var updated = NativeMethods.UpdateLayeredWindow(
@@ -1209,35 +1079,29 @@ internal sealed class PinOverlayForm : Form
                 ref source,
                 0,
                 ref blend,
-                NativeMethods.UlwAlpha);
+                NativeMethods.UlwAlpha
+            );
 
             if (!updated)
             {
-                throw new Win32Exception(
-                    Marshal.GetLastWin32Error());
+                throw new Win32Exception(Marshal.GetLastWin32Error());
             }
         }
         finally
         {
             if (oldBitmap != IntPtr.Zero)
             {
-                NativeMethods.SelectObject(
-                    memoryDeviceContext,
-                    oldBitmap);
+                NativeMethods.SelectObject(memoryDeviceContext, oldBitmap);
             }
 
             if (bitmapHandle != IntPtr.Zero)
             {
-                NativeMethods.DeleteObject(
-                    bitmapHandle);
+                NativeMethods.DeleteObject(bitmapHandle);
             }
 
-            NativeMethods.DeleteDC(
-                memoryDeviceContext);
+            NativeMethods.DeleteDC(memoryDeviceContext);
 
-            NativeMethods.ReleaseDC(
-                IntPtr.Zero,
-                screenDeviceContext);
+            NativeMethods.ReleaseDC(IntPtr.Zero, screenDeviceContext);
         }
     }
 }
@@ -1250,32 +1114,21 @@ internal sealed class WinEventMonitor : IDisposable
 
     private bool _disposed;
 
-    public WinEventMonitor(
-        Action<uint, IntPtr, int> onEvent)
+    public WinEventMonitor(Action<uint, IntPtr, int> onEvent)
     {
         _onEvent = onEvent;
         _callback = HandleWinEvent;
 
-        AddHook(
-            NativeMethods.EventSystemForeground,
-            NativeMethods.EventSystemForeground);
+        AddHook(NativeMethods.EventSystemForeground, NativeMethods.EventSystemForeground);
 
-        AddHook(
-            NativeMethods.EventSystemMoveSizeStart,
-            NativeMethods.EventSystemMoveSizeEnd);
+        AddHook(NativeMethods.EventSystemMoveSizeStart, NativeMethods.EventSystemMoveSizeEnd);
 
-        AddHook(
-            NativeMethods.EventSystemMinimizeStart,
-            NativeMethods.EventSystemMinimizeEnd);
+        AddHook(NativeMethods.EventSystemMinimizeStart, NativeMethods.EventSystemMinimizeEnd);
 
-        AddHook(
-            NativeMethods.EventObjectDestroy,
-            NativeMethods.EventObjectLocationChange);
+        AddHook(NativeMethods.EventObjectDestroy, NativeMethods.EventObjectLocationChange);
     }
 
-    private void AddHook(
-        uint minimumEvent,
-        uint maximumEvent)
+    private void AddHook(uint minimumEvent, uint maximumEvent)
     {
         var hook = NativeMethods.SetWinEventHook(
             minimumEvent,
@@ -1284,14 +1137,15 @@ internal sealed class WinEventMonitor : IDisposable
             _callback,
             0,
             0,
-            NativeMethods.WinEventOutOfContext |
-            NativeMethods.WinEventSkipOwnProcess);
+            NativeMethods.WinEventOutOfContext | NativeMethods.WinEventSkipOwnProcess
+        );
 
         if (hook == IntPtr.Zero)
         {
             throw new Win32Exception(
                 Marshal.GetLastWin32Error(),
-                "Не удалось подписаться на события окон Windows.");
+                "Не удалось подписаться на события окон Windows."
+            );
         }
 
         _hooks.Add(hook);
@@ -1304,7 +1158,8 @@ internal sealed class WinEventMonitor : IDisposable
         int objectId,
         int childId,
         uint eventThread,
-        uint eventTime)
+        uint eventTime
+    )
     {
         if (_disposed)
         {
@@ -1339,22 +1194,19 @@ internal sealed class WinEventMonitor : IDisposable
 internal enum OverlayVisualStyle
 {
     Default,
-    Telegram
+    Telegram,
 }
 
 internal static class WindowProfiles
 {
-    public static OverlayVisualStyle GetVisualStyle(
-        IntPtr window)
+    public static OverlayVisualStyle GetVisualStyle(IntPtr window)
     {
         if (window == IntPtr.Zero)
         {
             return OverlayVisualStyle.Default;
         }
 
-        NativeMethods.GetWindowThreadProcessId(
-            window,
-            out var processId);
+        NativeMethods.GetWindowThreadProcessId(window, out var processId);
 
         if (processId == 0)
         {
@@ -1363,13 +1215,9 @@ internal static class WindowProfiles
 
         try
         {
-            using var process =
-                System.Diagnostics.Process.GetProcessById(
-                    checked((int)processId));
+            using var process = System.Diagnostics.Process.GetProcessById(checked((int)processId));
 
-            return process.ProcessName.Equals(
-                "Telegram",
-                StringComparison.OrdinalIgnoreCase)
+            return process.ProcessName.Equals("Telegram", StringComparison.OrdinalIgnoreCase)
                 ? OverlayVisualStyle.Telegram
                 : OverlayVisualStyle.Default;
         }
@@ -1390,16 +1238,17 @@ internal static class WindowOverlayGeometry
         OverlayVisualStyle visualStyle,
         AppSettings settings,
         out Rectangle bounds,
-        out bool isDarkTitleBar)
+        out bool isDarkTitleBar
+    )
     {
         bounds = Rectangle.Empty;
         isDarkTitleBar = GetDarkTitleBarState(window);
 
-        if (!NativeMethods.IsWindowVisible(window) ||
-            NativeMethods.IsIconic(window) ||
-            !NativeMethods.GetWindowRect(
-                window,
-                out var windowRectangle))
+        if (
+            !NativeMethods.IsWindowVisible(window)
+            || NativeMethods.IsIconic(window)
+            || !NativeMethods.GetWindowRect(window, out var windowRectangle)
+        )
         {
             return false;
         }
@@ -1411,69 +1260,54 @@ internal static class WindowOverlayGeometry
         }
 
         var scale = dpi / 96f;
-        var isTelegram =
-            visualStyle == OverlayVisualStyle.Telegram;
+        var isTelegram = visualStyle == OverlayVisualStyle.Telegram;
 
-        var logicalButtonSize = isTelegram
-            ? Math.Max(20, settings.PinSize - 3)
-            : settings.PinSize;
+        var logicalButtonSize = isTelegram ? Math.Max(20, settings.PinSize - 3) : settings.PinSize;
 
-        var buttonSize = Math.Max(
-            18,
-            (int)Math.Round(logicalButtonSize * scale));
+        var buttonSize = Math.Max(18, (int)Math.Round(logicalButtonSize * scale));
 
         var gap = isTelegram
-            ? Math.Max(
-                2,
-                (int)Math.Round(2 * scale))
-            : Math.Max(
-                5,
-                (int)Math.Round(7 * scale));
+            ? Math.Max(2, (int)Math.Round(2 * scale))
+            : Math.Max(5, (int)Math.Round(7 * scale));
 
         var x = 0;
         var y = 0;
         var usedCaptionBounds = false;
 
         NativeMethods.Rect captionButtons;
-        var captionResult =
-            NativeMethods.DwmGetWindowAttributeRect(
-                window,
-                DwmwaCaptionButtonBounds,
-                out captionButtons,
-                Marshal.SizeOf<NativeMethods.Rect>());
+        var captionResult = NativeMethods.DwmGetWindowAttributeRect(
+            window,
+            DwmwaCaptionButtonBounds,
+            out captionButtons,
+            Marshal.SizeOf<NativeMethods.Rect>()
+        );
 
-        if (!isTelegram &&
-            captionResult == 0 &&
-            captionButtons.Right > captionButtons.Left &&
-            captionButtons.Bottom > captionButtons.Top)
+        if (
+            !isTelegram
+            && captionResult == 0
+            && captionButtons.Right > captionButtons.Left
+            && captionButtons.Bottom > captionButtons.Top
+        )
         {
-            var captionWidth =
-                captionButtons.Right - captionButtons.Left;
+            var captionWidth = captionButtons.Right - captionButtons.Left;
 
-            var captionHeight =
-                captionButtons.Bottom - captionButtons.Top;
+            var captionHeight = captionButtons.Bottom - captionButtons.Top;
 
-            var windowWidth =
-                windowRectangle.Right - windowRectangle.Left;
+            var windowWidth = windowRectangle.Right - windowRectangle.Left;
 
-            if (captionButtons.Left >= 0 &&
-                captionButtons.Right <=
-                    windowWidth + (int)(24 * scale) &&
-                captionWidth >= (int)(60 * scale) &&
-                captionHeight >= (int)(20 * scale))
+            if (
+                captionButtons.Left >= 0
+                && captionButtons.Right <= windowWidth + (int)(24 * scale)
+                && captionWidth >= (int)(60 * scale)
+                && captionHeight >= (int)(20 * scale)
+            )
             {
-                x =
-                    windowRectangle.Left +
-                    captionButtons.Left -
-                    buttonSize -
-                    gap;
+                x = windowRectangle.Left + captionButtons.Left - buttonSize - gap;
 
                 y =
-                    windowRectangle.Top +
-                    captionButtons.Top +
-                    Math.Max(
-                        0,
-                        (captionHeight - buttonSize) / 2);
+                    windowRectangle.Top
+                    + captionButtons.Top
+                    + Math.Max(0, (captionHeight - buttonSize) / 2);
 
                 usedCaptionBounds = true;
             }
@@ -1488,56 +1322,42 @@ internal static class WindowOverlayGeometry
                 ? (int)Math.Round(108 * scale)
                 : (int)Math.Round(138 * scale);
 
-            x =
-                windowRectangle.Right -
-                systemButtonsWidth -
-                buttonSize -
-                gap;
+            x = windowRectangle.Right - systemButtonsWidth - buttonSize - gap;
 
-            y =
-                windowRectangle.Top +
-                Math.Max(
-                    1,
-                    (int)Math.Round(
-                        (isTelegram ? 4 : 3) * scale));
+            y = windowRectangle.Top + Math.Max(1, (int)Math.Round((isTelegram ? 4 : 3) * scale));
         }
 
         x += (int)Math.Round(settings.OffsetX * scale);
         y += (int)Math.Round(settings.OffsetY * scale);
 
-        var windowHeight =
-            windowRectangle.Bottom -
-            windowRectangle.Top;
+        var windowHeight = windowRectangle.Bottom - windowRectangle.Top;
 
-        if (x < windowRectangle.Left ||
-            x + buttonSize > windowRectangle.Right ||
-            y < windowRectangle.Top ||
-            y + buttonSize > windowRectangle.Bottom ||
-            windowHeight < buttonSize + 8)
+        if (
+            x < windowRectangle.Left
+            || x + buttonSize > windowRectangle.Right
+            || y < windowRectangle.Top
+            || y + buttonSize > windowRectangle.Bottom
+            || windowHeight < buttonSize + 8
+        )
         {
             return false;
         }
 
-        bounds = new Rectangle(
-            x,
-            y,
-            buttonSize,
-            buttonSize);
+        bounds = new Rectangle(x, y, buttonSize, buttonSize);
 
         return true;
     }
 
-    private static bool GetDarkTitleBarState(
-        IntPtr window)
+    private static bool GetDarkTitleBarState(IntPtr window)
     {
         int darkMode;
 
-        var result =
-            NativeMethods.DwmGetWindowAttributeInt(
-                window,
-                DwmwaUseImmersiveDarkMode,
-                out darkMode,
-                sizeof(int));
+        var result = NativeMethods.DwmGetWindowAttributeInt(
+            window,
+            DwmwaUseImmersiveDarkMode,
+            out darkMode,
+            sizeof(int)
+        );
 
         if (result == 0)
         {
@@ -1551,15 +1371,13 @@ internal static class WindowOverlayGeometry
     {
         try
         {
-            using var key =
-                Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
-                    @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+            );
 
-            var value = key?.GetValue(
-                "AppsUseLightTheme");
+            var value = key?.GetValue("AppsUseLightTheme");
 
-            return value is int lightTheme &&
-                   lightTheme == 0;
+            return value is int lightTheme && lightTheme == 0;
         }
         catch
         {
@@ -1578,35 +1396,32 @@ internal static class WindowFiltering
 
     private const int DwmwaCloaked = 14;
 
-    private static readonly uint CurrentProcessId =
-        (uint)Environment.ProcessId;
+    private static readonly uint CurrentProcessId = (uint)Environment.ProcessId;
 
-    private static readonly HashSet<string> IgnoredClasses =
-        new(StringComparer.Ordinal)
-        {
-            "Progman",
-            "WorkerW",
-            "Shell_TrayWnd",
-            "Shell_SecondaryTrayWnd",
-            "NotifyIconOverflowWindow",
-            "DV2ControlHost",
-            "MultitaskingViewFrame"
-        };
-
-    public static bool IsEligible(
-        IntPtr window)
+    private static readonly HashSet<string> IgnoredClasses = new(StringComparer.Ordinal)
     {
-        if (window == IntPtr.Zero ||
-            !NativeMethods.IsWindow(window) ||
-            !NativeMethods.IsWindowVisible(window) ||
-            NativeMethods.IsIconic(window))
+        "Progman",
+        "WorkerW",
+        "Shell_TrayWnd",
+        "Shell_SecondaryTrayWnd",
+        "NotifyIconOverflowWindow",
+        "DV2ControlHost",
+        "MultitaskingViewFrame",
+    };
+
+    public static bool IsEligible(IntPtr window)
+    {
+        if (
+            window == IntPtr.Zero
+            || !NativeMethods.IsWindow(window)
+            || !NativeMethods.IsWindowVisible(window)
+            || NativeMethods.IsIconic(window)
+        )
         {
             return false;
         }
 
-        NativeMethods.GetWindowThreadProcessId(
-            window,
-            out var processId);
+        NativeMethods.GetWindowThreadProcessId(window, out var processId);
 
         if (processId == CurrentProcessId)
         {
@@ -1618,69 +1433,55 @@ internal static class WindowFiltering
             return false;
         }
 
-        var className =
-            WindowText.GetClassName(window);
+        var className = WindowText.GetClassName(window);
 
         if (IgnoredClasses.Contains(className))
         {
             return false;
         }
 
-        var style =
-            NativeMethods.GetWindowLongPtr(
-                window,
-                GwlStyle).ToInt64();
+        var style = NativeMethods.GetWindowLongPtr(window, GwlStyle).ToInt64();
 
         if ((style & WsCaption) != WsCaption)
         {
             return false;
         }
 
-        var extendedStyle =
-            NativeMethods.GetWindowLongPtr(
-                window,
-                GwlExStyle).ToInt64();
+        var extendedStyle = NativeMethods.GetWindowLongPtr(window, GwlExStyle).ToInt64();
 
         if ((extendedStyle & WsExToolWindow) != 0)
         {
             return false;
         }
 
-        if (!NativeMethods.GetWindowRect(
-                window,
-                out var rectangle))
+        if (!NativeMethods.GetWindowRect(window, out var rectangle))
         {
             return false;
         }
 
-        var width =
-            rectangle.Right - rectangle.Left;
+        var width = rectangle.Right - rectangle.Left;
 
-        var height =
-            rectangle.Bottom - rectangle.Top;
+        var height = rectangle.Bottom - rectangle.Top;
 
         return width >= 240 && height >= 80;
     }
 
-    private static bool IsCloaked(
-        IntPtr window)
+    private static bool IsCloaked(IntPtr window)
     {
         int cloaked;
 
-        var result =
-            NativeMethods.DwmGetWindowAttributeInt(
-                window,
-                DwmwaCloaked,
-                out cloaked,
-                sizeof(int));
+        var result = NativeMethods.DwmGetWindowAttributeInt(
+            window,
+            DwmwaCloaked,
+            out cloaked,
+            sizeof(int)
+        );
 
         return result == 0 && cloaked != 0;
     }
 }
 
-internal sealed class HotkeyWindow :
-    NativeWindow,
-    IDisposable
+internal sealed class HotkeyWindow : NativeWindow, IDisposable
 {
     private const int HotkeyId = 1;
     private const int WmHotkey = 0x0312;
@@ -1690,9 +1491,7 @@ internal sealed class HotkeyWindow :
     private HotkeyDefinition _definition;
     private bool _disposed;
 
-    public HotkeyWindow(
-        Action onHotkey,
-        HotkeyDefinition definition)
+    public HotkeyWindow(Action onHotkey, HotkeyDefinition definition)
     {
         _onHotkey = onHotkey;
         CreateHandle(new CreateParams());
@@ -1738,27 +1537,27 @@ internal sealed class HotkeyWindow :
             Handle,
             HotkeyId,
             definition.NativeModifiers | ModNoRepeat,
-            (uint)definition.Key);
+            (uint)definition.Key
+        );
 
         if (registered)
         {
             return;
         }
 
-        var error = new Win32Exception(
-            Marshal.GetLastWin32Error());
+        var error = new Win32Exception(Marshal.GetLastWin32Error());
 
         throw new InvalidOperationException(
-            $"Не удалось зарегистрировать {definition.DisplayText}. " +
-            "Возможно, это сочетание уже занято другой программой.\n\n" +
-            error.Message,
-            error);
+            $"Не удалось зарегистрировать {definition.DisplayText}. "
+                + "Возможно, это сочетание уже занято другой программой.\n\n"
+                + error.Message,
+            error
+        );
     }
 
     protected override void WndProc(ref Message message)
     {
-        if (message.Msg == WmHotkey &&
-            message.WParam.ToInt32() == HotkeyId)
+        if (message.Msg == WmHotkey && message.WParam.ToInt32() == HotkeyId)
         {
             _onHotkey();
         }
@@ -1782,89 +1581,63 @@ internal sealed class HotkeyWindow :
 
 internal static class WindowPinning
 {
-    private static readonly IntPtr HwndTopmost =
-        new(-1);
+    private static readonly IntPtr HwndTopmost = new(-1);
 
-    private static readonly IntPtr HwndNotTopmost =
-        new(-2);
+    private static readonly IntPtr HwndNotTopmost = new(-2);
 
     private const int GwlExStyle = -20;
     private const long WsExTopmost = 0x00000008L;
 
-    public static ToggleResult ToggleWindow(
-        IntPtr window)
+    public static ToggleResult ToggleWindow(IntPtr window)
     {
-        if (window == IntPtr.Zero ||
-            !NativeMethods.IsWindow(window))
+        if (window == IntPtr.Zero || !NativeMethods.IsWindow(window))
         {
-            return ToggleResult.Error(
-                "Окно не найдено.");
+            return ToggleResult.Error("Окно не найдено.");
         }
 
-        var className =
-            WindowText.GetClassName(window);
+        var className = WindowText.GetClassName(window);
 
-        if (className is
-            "Progman" or
-            "WorkerW" or
-            "Shell_TrayWnd" or
-            "Shell_SecondaryTrayWnd")
+        if (className is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd")
         {
-            return ToggleResult.Error(
-                "Рабочий стол и панель задач закреплять нельзя.");
+            return ToggleResult.Error("Рабочий стол и панель задач закреплять нельзя.");
         }
 
         var wasTopMost = IsTopMost(window);
 
-        var newPosition = wasTopMost
-            ? HwndNotTopmost
-            : HwndTopmost;
+        var newPosition = wasTopMost ? HwndNotTopmost : HwndTopmost;
 
-        var changed =
-            NativeMethods.SetWindowPos(
-                window,
-                newPosition,
-                0,
-                0,
-                0,
-                0,
-                NativeMethods.SwpNoMove |
-                NativeMethods.SwpNoSize |
-                NativeMethods.SwpNoActivate);
+        var changed = NativeMethods.SetWindowPos(
+            window,
+            newPosition,
+            0,
+            0,
+            0,
+            0,
+            NativeMethods.SwpNoMove | NativeMethods.SwpNoSize | NativeMethods.SwpNoActivate
+        );
 
         if (!changed)
         {
-            var error = new Win32Exception(
-                Marshal.GetLastWin32Error());
+            var error = new Win32Exception(Marshal.GetLastWin32Error());
 
-            return ToggleResult.Error(
-                $"Windows не разрешила изменить окно: {error.Message}");
+            return ToggleResult.Error($"Windows не разрешила изменить окно: {error.Message}");
         }
 
-        var title =
-            WindowText.GetWindowTitle(window);
+        var title = WindowText.GetWindowTitle(window);
 
-        var action = wasTopMost
-            ? "Откреплено"
-            : "Закреплено поверх окон";
+        var action = wasTopMost ? "Откреплено" : "Закреплено поверх окон";
 
-        return ToggleResult.Ok(
-            $"{action}: {title}");
+        return ToggleResult.Ok($"{action}: {title}");
     }
 
-    public static bool IsTopMost(
-        IntPtr window)
+    public static bool IsTopMost(IntPtr window)
     {
-        if (window == IntPtr.Zero ||
-            !NativeMethods.IsWindow(window))
+        if (window == IntPtr.Zero || !NativeMethods.IsWindow(window))
         {
             return false;
         }
 
-        var extendedStyle =
-            NativeMethods.GetWindowLongPtr(
-                window,
-                GwlExStyle).ToInt64();
+        var extendedStyle = NativeMethods.GetWindowLongPtr(window, GwlExStyle).ToInt64();
 
         return (extendedStyle & WsExTopmost) != 0;
     }
@@ -1872,60 +1645,39 @@ internal static class WindowPinning
 
 internal static class WindowText
 {
-    public static string GetWindowTitle(
-        IntPtr window)
+    public static string GetWindowTitle(IntPtr window)
     {
-        var length =
-            NativeMethods.GetWindowTextLength(
-                window);
+        var length = NativeMethods.GetWindowTextLength(window);
 
         if (length <= 0)
         {
-            var className =
-                GetClassName(window);
+            var className = GetClassName(window);
 
-            return string.IsNullOrWhiteSpace(
-                className)
-                ? "окно без названия"
-                : className;
+            return string.IsNullOrWhiteSpace(className) ? "окно без названия" : className;
         }
 
-        var buffer =
-            new StringBuilder(length + 1);
+        var buffer = new StringBuilder(length + 1);
 
-        NativeMethods.GetWindowText(
-            window,
-            buffer,
-            buffer.Capacity);
+        NativeMethods.GetWindowText(window, buffer, buffer.Capacity);
 
         return buffer.ToString();
     }
 
-    public static string GetClassName(
-        IntPtr window)
+    public static string GetClassName(IntPtr window)
     {
         var buffer = new StringBuilder(256);
 
-        NativeMethods.GetClassName(
-            window,
-            buffer,
-            buffer.Capacity);
+        NativeMethods.GetClassName(window, buffer, buffer.Capacity);
 
         return buffer.ToString();
     }
 }
 
-internal readonly record struct ToggleResult(
-    bool Success,
-    string Message)
+internal readonly record struct ToggleResult(bool Success, string Message)
 {
-    public static ToggleResult Ok(
-        string message) =>
-        new(true, message);
+    public static ToggleResult Ok(string message) => new(true, message);
 
-    public static ToggleResult Error(
-        string message) =>
-        new(false, message);
+    public static ToggleResult Error(string message) => new(false, message);
 }
 
 internal static class NativeMethods
@@ -1970,7 +1722,8 @@ internal static class NativeMethods
         int objectId,
         int childId,
         uint eventThread,
-        uint eventTime);
+        uint eventTime
+    );
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct Rect
@@ -2016,61 +1769,46 @@ internal static class NativeMethods
         public byte AlphaFormat;
     }
 
-    [DllImport(
-        "user32.dll",
-        SetLastError = true)]
+    [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool RegisterHotKey(
         IntPtr window,
         int id,
         uint modifiers,
-        uint virtualKey);
+        uint virtualKey
+    );
 
-    [DllImport(
-        "user32.dll",
-        SetLastError = true)]
+    [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool UnregisterHotKey(
-        IntPtr window,
-        int id);
+    internal static extern bool UnregisterHotKey(IntPtr window, int id);
 
     [DllImport("user32.dll")]
     internal static extern IntPtr GetForegroundWindow();
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool IsWindow(
-        IntPtr window);
+    internal static extern bool IsWindow(IntPtr window);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool IsWindowVisible(
-        IntPtr window);
+    internal static extern bool IsWindowVisible(IntPtr window);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool IsIconic(
-        IntPtr window);
+    internal static extern bool IsIconic(IntPtr window);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool ShowWindow(
-        IntPtr window,
-        int command);
+    internal static extern bool ShowWindow(IntPtr window, int command);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool GetWindowRect(
-        IntPtr window,
-        out Rect rectangle);
+    internal static extern bool GetWindowRect(IntPtr window, out Rect rectangle);
 
     [DllImport("user32.dll")]
-    internal static extern uint GetDpiForWindow(
-        IntPtr window);
+    internal static extern uint GetDpiForWindow(IntPtr window);
 
-    [DllImport(
-        "user32.dll",
-        SetLastError = true)]
+    [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool SetWindowPos(
         IntPtr window,
@@ -2079,56 +1817,42 @@ internal static class NativeMethods
         int y,
         int width,
         int height,
-        uint flags);
+        uint flags
+    );
 
-    [DllImport(
-        "user32.dll",
-        CharSet = CharSet.Unicode)]
-    internal static extern int GetWindowText(
-        IntPtr window,
-        StringBuilder text,
-        int maximumCount);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    internal static extern int GetWindowText(IntPtr window, StringBuilder text, int maximumCount);
 
-    [DllImport(
-        "user32.dll",
-        CharSet = CharSet.Unicode)]
-    internal static extern int GetWindowTextLength(
-        IntPtr window);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    internal static extern int GetWindowTextLength(IntPtr window);
 
-    [DllImport(
-        "user32.dll",
-        CharSet = CharSet.Unicode)]
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     internal static extern int GetClassName(
         IntPtr window,
         StringBuilder className,
-        int maximumCount);
+        int maximumCount
+    );
 
     [DllImport("user32.dll")]
-    internal static extern uint GetWindowThreadProcessId(
-        IntPtr window,
-        out uint processId);
+    internal static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
 
-    [DllImport(
-        "dwmapi.dll",
-        EntryPoint = "DwmGetWindowAttribute")]
+    [DllImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")]
     internal static extern int DwmGetWindowAttributeRect(
         IntPtr window,
         int attribute,
         out Rect value,
-        int valueSize);
+        int valueSize
+    );
 
-    [DllImport(
-        "dwmapi.dll",
-        EntryPoint = "DwmGetWindowAttribute")]
+    [DllImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")]
     internal static extern int DwmGetWindowAttributeInt(
         IntPtr window,
         int attribute,
         out int value,
-        int valueSize);
+        int valueSize
+    );
 
-    [DllImport(
-        "user32.dll",
-        SetLastError = true)]
+    [DllImport("user32.dll", SetLastError = true)]
     internal static extern IntPtr SetWinEventHook(
         uint eventMinimum,
         uint eventMaximum,
@@ -2136,44 +1860,34 @@ internal static class NativeMethods
         WinEventDelegate callback,
         uint processId,
         uint threadId,
-        uint flags);
+        uint flags
+    );
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool UnhookWinEvent(
-        IntPtr hook);
+    internal static extern bool UnhookWinEvent(IntPtr hook);
 
     [DllImport("user32.dll")]
-    internal static extern IntPtr GetDC(
-        IntPtr window);
+    internal static extern IntPtr GetDC(IntPtr window);
 
     [DllImport("user32.dll")]
-    internal static extern int ReleaseDC(
-        IntPtr window,
-        IntPtr deviceContext);
+    internal static extern int ReleaseDC(IntPtr window, IntPtr deviceContext);
 
     [DllImport("gdi32.dll")]
-    internal static extern IntPtr CreateCompatibleDC(
-        IntPtr deviceContext);
+    internal static extern IntPtr CreateCompatibleDC(IntPtr deviceContext);
 
     [DllImport("gdi32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool DeleteDC(
-        IntPtr deviceContext);
+    internal static extern bool DeleteDC(IntPtr deviceContext);
 
     [DllImport("gdi32.dll")]
-    internal static extern IntPtr SelectObject(
-        IntPtr deviceContext,
-        IntPtr graphicsObject);
+    internal static extern IntPtr SelectObject(IntPtr deviceContext, IntPtr graphicsObject);
 
     [DllImport("gdi32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool DeleteObject(
-        IntPtr graphicsObject);
+    internal static extern bool DeleteObject(IntPtr graphicsObject);
 
-    [DllImport(
-        "user32.dll",
-        SetLastError = true)]
+    [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool UpdateLayeredWindow(
         IntPtr window,
@@ -2184,76 +1898,37 @@ internal static class NativeMethods
         ref Point sourcePoint,
         int colorKey,
         ref BlendFunction blendFunction,
-        uint flags);
+        uint flags
+    );
 
-    internal static IntPtr GetWindowLongPtr(
-        IntPtr window,
-        int index)
+    internal static IntPtr GetWindowLongPtr(IntPtr window, int index)
     {
         return IntPtr.Size == 8
             ? GetWindowLongPtr64(window, index)
-            : new IntPtr(
-                GetWindowLong32(window, index));
+            : new IntPtr(GetWindowLong32(window, index));
     }
 
-    internal static IntPtr SetWindowOwner(
-        IntPtr window,
-        IntPtr owner)
+    internal static IntPtr SetWindowOwner(IntPtr window, IntPtr owner)
     {
-        return SetWindowLongPtr(
-            window,
-            GwlHwndParent,
-            owner);
+        return SetWindowLongPtr(window, GwlHwndParent, owner);
     }
 
-    private static IntPtr SetWindowLongPtr(
-        IntPtr window,
-        int index,
-        IntPtr newValue)
+    private static IntPtr SetWindowLongPtr(IntPtr window, int index, IntPtr newValue)
     {
         return IntPtr.Size == 8
-            ? SetWindowLongPtr64(
-                window,
-                index,
-                newValue)
-            : new IntPtr(
-                SetWindowLong32(
-                    window,
-                    index,
-                    newValue.ToInt32()));
+            ? SetWindowLongPtr64(window, index, newValue)
+            : new IntPtr(SetWindowLong32(window, index, newValue.ToInt32()));
     }
 
-    [DllImport(
-        "user32.dll",
-        EntryPoint = "GetWindowLongPtrW",
-        SetLastError = true)]
-    private static extern IntPtr GetWindowLongPtr64(
-        IntPtr window,
-        int index);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
+    private static extern IntPtr GetWindowLongPtr64(IntPtr window, int index);
 
-    [DllImport(
-        "user32.dll",
-        EntryPoint = "GetWindowLongW",
-        SetLastError = true)]
-    private static extern int GetWindowLong32(
-        IntPtr window,
-        int index);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)]
+    private static extern int GetWindowLong32(IntPtr window, int index);
 
-    [DllImport(
-        "user32.dll",
-        EntryPoint = "SetWindowLongPtrW",
-        SetLastError = true)]
-    private static extern IntPtr SetWindowLongPtr64(
-        IntPtr window,
-        int index,
-        IntPtr newValue);
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+    private static extern IntPtr SetWindowLongPtr64(IntPtr window, int index, IntPtr newValue);
 
-    [DllImport(
-        "user32.dll",
-        EntryPoint = "SetWindowLongW",
-        SetLastError = true)]
-    private static extern int SetWindowLong32(
-        IntPtr window,
-        int index,
-        int newValue);
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
+    private static extern int SetWindowLong32(IntPtr window, int index, int newValue);
 }
