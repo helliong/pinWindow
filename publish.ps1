@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
 dotnet publish `
   -c Release `
@@ -7,8 +7,10 @@ dotnet publish `
   -p:PublishSingleFile=true `
   -p:IncludeNativeLibrariesForSelfExtract=true
 
-$exe = Join-Path $PSScriptRoot "bin\Release\net8.0-windows\win-x64\publish\PinWindow.exe"
+$exe = Join-Path `
+  $PSScriptRoot `
+  "bin\Release\net8.0-windows\win-x64\publish\PinWindow.exe"
 
 Write-Host ""
-Write-Host "Готово:" -ForegroundColor Green
+Write-Host "Build completed:" -ForegroundColor Green
 Write-Host $exe
