@@ -3,5 +3,10 @@ obj/
 .vs/
 *.user
 *.suo
+
 # Release executables
 PinWindow-v*-win-x64.exe
+PinWindowSetup-v*-win-x64.exe
+
+# Generated installer artifacts
+artifacts/

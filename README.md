@@ -10,7 +10,9 @@
 # PinWindow — Always on Top
 
 [![Latest Release](https://img.shields.io/github/v/release/helliong/pinWindow?style=flat-square&label=release)](https://github.com/helliong/pinWindow/releases/latest)
-[![SourceForge Downloads](https://img.shields.io/sourceforge/dm/pinwindow?style=flat-square&label=downloads)](https://sourceforge.net/projects/pinwindow/files/)
+
+<!-- [![SourceForge Downloads](https://img.shields.io/sourceforge/dm/pinwindow?style=flat-square&label=downloads)](https://sourceforge.net/projects/pinwindow/files/) -->
+
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square&logo=windows)](https://github.com/helliong/pinWindow)
 [![.NET](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square&logo=dotnet)](https://dotnet.microsoft.com/)
 
