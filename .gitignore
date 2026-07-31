@@ -1,21 +1,5 @@
-# Build results
-[Bb]in/
-[Oo]bj/
-[Dd]ebug/
-[Rr]elease/
-publish/
-
-# Visual Studio / VS Code / IDEs
+bin/
+obj/
 .vs/
-.vscode/
-.idea/
 *.user
 *.suo
-*.userossc
-*.sln.docstates
-
-# Operating System files
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-.DS_Store

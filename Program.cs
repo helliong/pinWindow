@@ -1,5 +1,7 @@
 using System.ComponentModel;
 using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
@@ -8,10 +10,28 @@ namespace PinWindow;
 
 internal static class Program
 {
+    private const string MutexName =
+        "PinWindow.SingleInstance.1499A0DA-7CD9-43C8-88E1-67E4DBCEAD43";
+
     [STAThread]
     private static void Main()
     {
         ApplicationConfiguration.Initialize();
+
+        using var mutex = new Mutex(
+            initiallyOwned: true,
+            name: MutexName,
+            createdNew: out var isFirstInstance);
+
+        if (!isFirstInstance)
+        {
+            MessageBox.Show(
+                "PinWindow уже запущен. Найдите его значок в системном трее.",
+                "PinWindow",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
 
         try
         {
@@ -20,8 +40,8 @@ internal static class Program
         catch (Exception exception)
         {
             MessageBox.Show(
-                exception.Message,
-                "PinWindow",
+                exception.ToString(),
+                "Ошибка PinWindow",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
@@ -32,11 +52,32 @@ internal sealed class TrayApplicationContext : ApplicationContext
 {
     private readonly NotifyIcon _notifyIcon;
     private readonly HotkeyWindow _hotkeyWindow;
+    private readonly PinController _pinController;
+    private readonly ToolStripMenuItem _showButtonItem;
 
     public TrayApplicationContext()
     {
         var menu = new ContextMenuStrip();
-        menu.Items.Add("Горячая клавиша: Ctrl + Alt + T").Enabled = false;
+
+        menu.Items.Add(
+            "Закрепить/открепить активное окно",
+            null,
+            (_, _) => ToggleForegroundWindow());
+
+        _showButtonItem = new ToolStripMenuItem(
+            "Показывать кнопку у активного окна")
+        {
+            Checked = true,
+            CheckOnClick = true
+        };
+
+        menu.Items.Add(_showButtonItem);
+        menu.Items.Add(new ToolStripSeparator());
+
+        var hotkeyLabel =
+            menu.Items.Add("Горячая клавиша: Ctrl + Alt + T");
+        hotkeyLabel.Enabled = false;
+
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Выход", null, (_, _) => ExitThread());
 
@@ -48,21 +89,33 @@ internal sealed class TrayApplicationContext : ApplicationContext
             Visible = true
         };
 
-        _hotkeyWindow = new HotkeyWindow(ToggleActiveWindow);
+        _pinController = new PinController(ShowResult);
+
+        _showButtonItem.CheckedChanged += (_, _) =>
+            _pinController.Enabled = _showButtonItem.Checked;
+
+        _hotkeyWindow = new HotkeyWindow(ToggleForegroundWindow);
 
         _notifyIcon.ShowBalloonTip(
-            2500,
+            2600,
             "PinWindow запущен",
-            "Нажмите Ctrl + Alt + T, чтобы закрепить или открепить активное окно.",
+            "Кнопка-булавка показывается у активного окна. Также работает Ctrl + Alt + T.",
             ToolTipIcon.Info);
     }
 
-    private void ToggleActiveWindow()
+    private void ToggleForegroundWindow()
     {
-        var result = WindowPinning.ToggleForegroundWindow();
+        var window = NativeMethods.GetForegroundWindow();
+        var result = WindowPinning.ToggleWindow(window);
 
+        _pinController.RefreshNow();
+        ShowResult(result);
+    }
+
+    private void ShowResult(ToggleResult result)
+    {
         _notifyIcon.ShowBalloonTip(
-            1800,
+            1300,
             result.Success ? "PinWindow" : "Не удалось изменить окно",
             result.Message,
             result.Success ? ToolTipIcon.Info : ToolTipIcon.Error);
@@ -70,14 +123,1121 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     protected override void ExitThreadCore()
     {
+        _pinController.Dispose();
         _hotkeyWindow.Dispose();
+
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
+
         base.ExitThreadCore();
     }
 }
 
-internal sealed class HotkeyWindow : NativeWindow, IDisposable
+internal sealed class PinController : IDisposable
+{
+    private readonly PinOverlayForm _overlay;
+    private readonly WinEventMonitor _eventMonitor;
+    private readonly System.Windows.Forms.Timer _moveTimer;
+    private readonly System.Windows.Forms.Timer _settleTimer;
+
+    private IntPtr _targetWindow;
+    private bool _enabled = true;
+    private bool _disposed;
+    private int _refreshPosted;
+    private int _settleAttemptsRemaining;
+
+    public PinController(Action<ToggleResult> showResult)
+    {
+        _overlay = new PinOverlayForm(ToggleTargetWindow, showResult);
+
+        _moveTimer = new System.Windows.Forms.Timer
+        {
+            Interval = 16
+        };
+        _moveTimer.Tick += (_, _) => UpdateOverlayPosition();
+
+        // После разворачивания/изменения размера DWM иногда несколько
+        // десятков миллисекунд возвращает старые границы кнопок заголовка.
+        // Короткие повторные проверки возвращают булавку без дополнительного клика.
+        _settleTimer = new System.Windows.Forms.Timer
+        {
+            Interval = 45
+        };
+        _settleTimer.Tick += (_, _) =>
+        {
+            UpdateOverlayPosition();
+
+            _settleAttemptsRemaining--;
+
+            if (_settleAttemptsRemaining <= 0)
+            {
+                _settleTimer.Stop();
+            }
+        };
+
+        _eventMonitor = new WinEventMonitor(OnWinEvent);
+
+        RefreshNow();
+    }
+
+    public bool Enabled
+    {
+        get => _enabled;
+        set
+        {
+            if (_enabled == value)
+            {
+                return;
+            }
+
+            _enabled = value;
+
+            if (_enabled)
+            {
+                RefreshNow();
+            }
+            else
+            {
+                _moveTimer.Stop();
+                _settleTimer.Stop();
+                _settleAttemptsRemaining = 0;
+                _overlay.HideOverlay();
+                _targetWindow = IntPtr.Zero;
+            }
+        }
+    }
+
+    public void RefreshNow()
+    {
+        if (!_enabled || _disposed)
+        {
+            return;
+        }
+
+        var foregroundWindow = NativeMethods.GetForegroundWindow();
+
+        if (!WindowFiltering.IsEligible(foregroundWindow))
+        {
+            _targetWindow = IntPtr.Zero;
+            _overlay.HideOverlay();
+            return;
+        }
+
+        if (_targetWindow != foregroundWindow)
+        {
+            _targetWindow = foregroundWindow;
+            _overlay.AttachTo(_targetWindow);
+            ScheduleSettledRefresh();
+        }
+
+        UpdateOverlayPosition();
+    }
+
+    private ToggleResult ToggleTargetWindow()
+    {
+        var result = WindowPinning.ToggleWindow(_targetWindow);
+        UpdateOverlayPosition();
+        return result;
+    }
+
+    private void OnWinEvent(
+        uint eventType,
+        IntPtr window,
+        int objectId)
+    {
+        if (_disposed || !_enabled)
+        {
+            return;
+        }
+
+        if (eventType == NativeMethods.EventSystemForeground)
+        {
+            PostRefresh();
+            return;
+        }
+
+        if (window == IntPtr.Zero || window != _targetWindow)
+        {
+            return;
+        }
+
+        switch (eventType)
+        {
+            case NativeMethods.EventSystemMoveSizeStart:
+                PostToUi(() =>
+                {
+                    if (!_disposed && _enabled)
+                    {
+                        _moveTimer.Start();
+                        UpdateOverlayPosition();
+                    }
+                });
+                break;
+
+            case NativeMethods.EventSystemMoveSizeEnd:
+                PostToUi(() =>
+                {
+                    _moveTimer.Stop();
+                    UpdateOverlayPosition();
+                    ScheduleSettledRefresh();
+                });
+                break;
+
+            case NativeMethods.EventSystemMinimizeStart:
+            case NativeMethods.EventObjectHide:
+            case NativeMethods.EventObjectDestroy:
+                PostToUi(() =>
+                {
+                    _moveTimer.Stop();
+                    _settleTimer.Stop();
+                    _settleAttemptsRemaining = 0;
+                    _overlay.HideOverlay();
+                });
+                break;
+
+            case NativeMethods.EventSystemMinimizeEnd:
+            case NativeMethods.EventObjectShow:
+                PostToUi(() =>
+                {
+                    RefreshNow();
+                    ScheduleSettledRefresh();
+                });
+                break;
+
+            case NativeMethods.EventObjectLocationChange:
+                if (objectId == NativeMethods.ObjIdWindow)
+                {
+                    PostToUi(() =>
+                    {
+                        UpdateOverlayPosition();
+                        ScheduleSettledRefresh(5);
+                    });
+                }
+                break;
+        }
+    }
+
+    private void ScheduleSettledRefresh(int attempts = 8)
+    {
+        if (_disposed || !_enabled)
+        {
+            return;
+        }
+
+        _settleAttemptsRemaining = Math.Max(
+            _settleAttemptsRemaining,
+            attempts);
+
+        if (!_settleTimer.Enabled)
+        {
+            _settleTimer.Start();
+        }
+    }
+
+    private void PostRefresh()
+    {
+        PostToUi(() =>
+        {
+            RefreshNow();
+            ScheduleSettledRefresh();
+        });
+    }
+
+    private void PostPositionRefresh()
+    {
+        if (Interlocked.Exchange(ref _refreshPosted, 1) == 1)
+        {
+            return;
+        }
+
+        PostToUi(() =>
+        {
+            Interlocked.Exchange(ref _refreshPosted, 0);
+            UpdateOverlayPosition();
+        });
+    }
+
+    private void PostToUi(Action action)
+    {
+        if (_disposed ||
+            !_overlay.IsHandleCreated ||
+            _overlay.IsDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            _overlay.BeginInvoke(action);
+        }
+        catch (InvalidOperationException)
+        {
+            // Приложение уже закрывается.
+        }
+    }
+
+    private void UpdateOverlayPosition()
+    {
+        if (!_enabled || _disposed)
+        {
+            return;
+        }
+
+        if (_targetWindow == IntPtr.Zero ||
+            !WindowFiltering.IsEligible(_targetWindow))
+        {
+            _overlay.HideOverlay();
+            return;
+        }
+
+        _overlay.UpdateFromTarget();
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+
+        _moveTimer.Stop();
+        _moveTimer.Dispose();
+
+        _settleTimer.Stop();
+        _settleTimer.Dispose();
+
+        _eventMonitor.Dispose();
+        _overlay.Dispose();
+
+        GC.SuppressFinalize(this);
+    }
+}
+
+internal sealed class PinOverlayForm : Form
+{
+    private const int WmMouseActivate = 0x0021;
+    private const int MaNoActivate = 3;
+
+    private const int WsExLayered = 0x00080000;
+    private const int WsExToolWindow = 0x00000080;
+    private const int WsExNoActivate = 0x08000000;
+
+    private readonly Func<ToggleResult> _toggleTarget;
+    private readonly Action<ToggleResult> _showResult;
+    private readonly ToolTip _toolTip;
+
+    private IntPtr _targetWindow;
+    private Rectangle _lastBounds;
+    private bool _isPinned;
+    private bool _isHovered;
+    private bool _isDarkTitleBar;
+
+    public PinOverlayForm(
+        Func<ToggleResult> toggleTarget,
+        Action<ToggleResult> showResult)
+    {
+        _toggleTarget = toggleTarget;
+        _showResult = showResult;
+
+        AutoScaleMode = AutoScaleMode.None;
+        FormBorderStyle = FormBorderStyle.None;
+        ShowInTaskbar = false;
+        StartPosition = FormStartPosition.Manual;
+        Cursor = Cursors.Hand;
+
+        _toolTip = new ToolTip
+        {
+            InitialDelay = 350,
+            ReshowDelay = 100,
+            AutoPopDelay = 4500,
+            ShowAlways = true
+        };
+
+        _ = Handle;
+    }
+
+    protected override bool ShowWithoutActivation => true;
+
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            var parameters = base.CreateParams;
+            parameters.ExStyle |=
+                WsExLayered |
+                WsExToolWindow |
+                WsExNoActivate;
+            return parameters;
+        }
+    }
+
+    public void AttachTo(IntPtr targetWindow)
+    {
+        _targetWindow = targetWindow;
+
+        if (targetWindow != IntPtr.Zero)
+        {
+            NativeMethods.SetWindowOwner(
+                Handle,
+                targetWindow);
+        }
+
+        UpdateFromTarget();
+    }
+
+    public void UpdateFromTarget()
+    {
+        if (_targetWindow == IntPtr.Zero ||
+            !NativeMethods.IsWindow(_targetWindow))
+        {
+            HideOverlay();
+            return;
+        }
+
+        if (!WindowOverlayGeometry.TryGetButtonBounds(
+                _targetWindow,
+                out var bounds,
+                out var isDarkTitleBar))
+        {
+            HideOverlay();
+            return;
+        }
+
+        _lastBounds = bounds;
+        _isDarkTitleBar = isDarkTitleBar;
+        _isPinned = WindowPinning.IsTopMost(_targetWindow);
+
+        // При максимизации Windows может пересобрать non-client area
+        // и временно изменить порядок owned-окон.
+        NativeMethods.SetWindowOwner(
+            Handle,
+            _targetWindow);
+
+        _toolTip.SetToolTip(
+            this,
+            _isPinned
+                ? "Открепить окно"
+                : "Закрепить поверх остальных окон");
+
+        RenderLayeredWindow(bounds);
+
+        // Возвращаем overlay над окном-владельцем после максимизации,
+        // не активируя саму кнопку и не забирая фокус.
+        NativeMethods.SetWindowPos(
+            Handle,
+            NativeMethods.HwndTop,
+            0,
+            0,
+            0,
+            0,
+            NativeMethods.SwpNoMove |
+            NativeMethods.SwpNoSize |
+            NativeMethods.SwpNoActivate |
+            NativeMethods.SwpShowWindow |
+            NativeMethods.SwpNoOwnerZOrder);
+
+        if (!Visible)
+        {
+            NativeMethods.ShowWindow(
+                Handle,
+                NativeMethods.SwShowNoActivate);
+        }
+    }
+
+    public void HideOverlay()
+    {
+        if (IsHandleCreated && Visible)
+        {
+            NativeMethods.ShowWindow(
+                Handle,
+                NativeMethods.SwHide);
+        }
+    }
+
+    protected override void OnMouseEnter(EventArgs eventArgs)
+    {
+        _isHovered = true;
+
+        if (!_lastBounds.IsEmpty)
+        {
+            RenderLayeredWindow(_lastBounds);
+        }
+
+        base.OnMouseEnter(eventArgs);
+    }
+
+    protected override void OnMouseLeave(EventArgs eventArgs)
+    {
+        _isHovered = false;
+
+        if (!_lastBounds.IsEmpty)
+        {
+            RenderLayeredWindow(_lastBounds);
+        }
+
+        base.OnMouseLeave(eventArgs);
+    }
+
+    protected override void OnMouseUp(MouseEventArgs eventArgs)
+    {
+        if (eventArgs.Button == MouseButtons.Left)
+        {
+            var result = _toggleTarget();
+            _isPinned = WindowPinning.IsTopMost(_targetWindow);
+            _showResult(result);
+
+            if (!_lastBounds.IsEmpty)
+            {
+                RenderLayeredWindow(_lastBounds);
+            }
+        }
+
+        base.OnMouseUp(eventArgs);
+    }
+
+    protected override void WndProc(ref Message message)
+    {
+        if (message.Msg == WmMouseActivate)
+        {
+            message.Result = new IntPtr(MaNoActivate);
+            return;
+        }
+
+        base.WndProc(ref message);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _toolTip.Dispose();
+        }
+
+        base.Dispose(disposing);
+    }
+
+    private void RenderLayeredWindow(Rectangle bounds)
+    {
+        if (bounds.Width <= 0 || bounds.Height <= 0)
+        {
+            return;
+        }
+
+        using var bitmap = new Bitmap(
+            bounds.Width,
+            bounds.Height,
+            PixelFormat.Format32bppArgb);
+
+        using (var graphics = Graphics.FromImage(bitmap))
+        {
+            graphics.Clear(Color.Transparent);
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+
+            DrawButton(graphics, bounds.Size);
+        }
+
+        UpdateLayeredBitmap(bitmap, bounds);
+    }
+
+    private void DrawButton(Graphics graphics, Size size)
+    {
+        var scale = Math.Max(0.75f, size.Width / 28f);
+        var centerX = size.Width / 2f;
+        var centerY = size.Height / 2f;
+
+        if (_isHovered)
+        {
+            var hoverSize = Math.Min(
+                size.Width,
+                size.Height) - 4f * scale;
+
+            var hoverRectangle = new RectangleF(
+                centerX - hoverSize / 2f,
+                centerY - hoverSize / 2f,
+                hoverSize,
+                hoverSize);
+
+            var hoverColor = _isDarkTitleBar
+                ? Color.FromArgb(46, 255, 255, 255)
+                : Color.FromArgb(34, 0, 0, 0);
+
+            using var hoverBrush =
+                new SolidBrush(hoverColor);
+
+            graphics.FillEllipse(
+                hoverBrush,
+                hoverRectangle);
+        }
+
+        var iconColor = _isPinned
+            ? Color.FromArgb(255, 0, 120, 215)
+            : _isDarkTitleBar
+                ? Color.FromArgb(235, 245, 245, 247)
+                : Color.FromArgb(220, 42, 42, 46);
+
+        var shadowColor = _isDarkTitleBar
+            ? Color.FromArgb(90, 0, 0, 0)
+            : Color.FromArgb(70, 255, 255, 255);
+
+        DrawPin(
+            graphics,
+            centerX + 0.6f * scale,
+            centerY + 0.7f * scale,
+            scale,
+            shadowColor,
+            filled: _isPinned,
+            thicknessMultiplier: 1.65f);
+
+        DrawPin(
+            graphics,
+            centerX,
+            centerY,
+            scale,
+            iconColor,
+            filled: _isPinned,
+            thicknessMultiplier: 1f);
+    }
+
+    private static void DrawPin(
+        Graphics graphics,
+        float centerX,
+        float centerY,
+        float scale,
+        Color color,
+        bool filled,
+        float thicknessMultiplier)
+    {
+        using var pen = new Pen(
+            color,
+            Math.Max(
+                1.45f,
+                1.65f * scale * thicknessMultiplier))
+        {
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round,
+            LineJoin = LineJoin.Round
+        };
+
+        using var brush = new SolidBrush(color);
+
+        var headWidth = 9.5f * scale;
+        var headHeight = 4.4f * scale;
+
+        var head = new RectangleF(
+            centerX - headWidth / 2f,
+            centerY - 7.3f * scale,
+            headWidth,
+            headHeight);
+
+        if (filled)
+        {
+            graphics.FillRectangle(brush, head);
+        }
+        else
+        {
+            graphics.DrawRectangle(
+                pen,
+                head.X,
+                head.Y,
+                head.Width,
+                head.Height);
+        }
+
+        var shoulderY = centerY - 2.7f * scale;
+        var baseY = centerY + 3.0f * scale;
+        var leftShoulderX = centerX - 3.8f * scale;
+        var rightShoulderX = centerX + 3.8f * scale;
+        var leftBaseX = centerX - 5.5f * scale;
+        var rightBaseX = centerX + 5.5f * scale;
+
+        graphics.DrawLine(
+            pen,
+            leftShoulderX,
+            shoulderY,
+            leftBaseX,
+            baseY);
+
+        graphics.DrawLine(
+            pen,
+            rightShoulderX,
+            shoulderY,
+            rightBaseX,
+            baseY);
+
+        graphics.DrawLine(
+            pen,
+            leftBaseX,
+            baseY,
+            rightBaseX,
+            baseY);
+
+        graphics.DrawLine(
+            pen,
+            centerX,
+            baseY,
+            centerX,
+            centerY + 9.3f * scale);
+    }
+
+    private void UpdateLayeredBitmap(
+        Bitmap bitmap,
+        Rectangle bounds)
+    {
+        var screenDeviceContext =
+            NativeMethods.GetDC(IntPtr.Zero);
+
+        var memoryDeviceContext =
+            NativeMethods.CreateCompatibleDC(
+                screenDeviceContext);
+
+        IntPtr bitmapHandle = IntPtr.Zero;
+        IntPtr oldBitmap = IntPtr.Zero;
+
+        try
+        {
+            bitmapHandle = bitmap.GetHbitmap(
+                Color.FromArgb(0));
+
+            oldBitmap = NativeMethods.SelectObject(
+                memoryDeviceContext,
+                bitmapHandle);
+
+            var destination = new NativeMethods.Point(
+                bounds.Left,
+                bounds.Top);
+
+            var size = new NativeMethods.Size(
+                bounds.Width,
+                bounds.Height);
+
+            var source = new NativeMethods.Point(0, 0);
+
+            var blend = new NativeMethods.BlendFunction
+            {
+                BlendOp = NativeMethods.AcSrcOver,
+                BlendFlags = 0,
+                SourceConstantAlpha = 255,
+                AlphaFormat = NativeMethods.AcSrcAlpha
+            };
+
+            var updated = NativeMethods.UpdateLayeredWindow(
+                Handle,
+                screenDeviceContext,
+                ref destination,
+                ref size,
+                memoryDeviceContext,
+                ref source,
+                0,
+                ref blend,
+                NativeMethods.UlwAlpha);
+
+            if (!updated)
+            {
+                throw new Win32Exception(
+                    Marshal.GetLastWin32Error());
+            }
+        }
+        finally
+        {
+            if (oldBitmap != IntPtr.Zero)
+            {
+                NativeMethods.SelectObject(
+                    memoryDeviceContext,
+                    oldBitmap);
+            }
+
+            if (bitmapHandle != IntPtr.Zero)
+            {
+                NativeMethods.DeleteObject(
+                    bitmapHandle);
+            }
+
+            NativeMethods.DeleteDC(
+                memoryDeviceContext);
+
+            NativeMethods.ReleaseDC(
+                IntPtr.Zero,
+                screenDeviceContext);
+        }
+    }
+}
+
+internal sealed class WinEventMonitor : IDisposable
+{
+    private readonly NativeMethods.WinEventDelegate _callback;
+    private readonly Action<uint, IntPtr, int> _onEvent;
+    private readonly List<IntPtr> _hooks = new();
+
+    private bool _disposed;
+
+    public WinEventMonitor(
+        Action<uint, IntPtr, int> onEvent)
+    {
+        _onEvent = onEvent;
+        _callback = HandleWinEvent;
+
+        AddHook(
+            NativeMethods.EventSystemForeground,
+            NativeMethods.EventSystemForeground);
+
+        AddHook(
+            NativeMethods.EventSystemMoveSizeStart,
+            NativeMethods.EventSystemMoveSizeEnd);
+
+        AddHook(
+            NativeMethods.EventSystemMinimizeStart,
+            NativeMethods.EventSystemMinimizeEnd);
+
+        AddHook(
+            NativeMethods.EventObjectDestroy,
+            NativeMethods.EventObjectLocationChange);
+    }
+
+    private void AddHook(
+        uint minimumEvent,
+        uint maximumEvent)
+    {
+        var hook = NativeMethods.SetWinEventHook(
+            minimumEvent,
+            maximumEvent,
+            IntPtr.Zero,
+            _callback,
+            0,
+            0,
+            NativeMethods.WinEventOutOfContext |
+            NativeMethods.WinEventSkipOwnProcess);
+
+        if (hook == IntPtr.Zero)
+        {
+            throw new Win32Exception(
+                Marshal.GetLastWin32Error(),
+                "Не удалось подписаться на события окон Windows.");
+        }
+
+        _hooks.Add(hook);
+    }
+
+    private void HandleWinEvent(
+        IntPtr hook,
+        uint eventType,
+        IntPtr window,
+        int objectId,
+        int childId,
+        uint eventThread,
+        uint eventTime)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _onEvent(eventType, window, objectId);
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+
+        foreach (var hook in _hooks)
+        {
+            if (hook != IntPtr.Zero)
+            {
+                NativeMethods.UnhookWinEvent(hook);
+            }
+        }
+
+        _hooks.Clear();
+        GC.SuppressFinalize(this);
+    }
+}
+
+internal static class WindowOverlayGeometry
+{
+    private const int DwmwaCaptionButtonBounds = 5;
+    private const int DwmwaUseImmersiveDarkMode = 20;
+
+    public static bool TryGetButtonBounds(
+        IntPtr window,
+        out Rectangle bounds,
+        out bool isDarkTitleBar)
+    {
+        bounds = Rectangle.Empty;
+        isDarkTitleBar = GetDarkTitleBarState(window);
+
+        if (!NativeMethods.IsWindowVisible(window) ||
+            NativeMethods.IsIconic(window) ||
+            !NativeMethods.GetWindowRect(
+                window,
+                out var windowRectangle))
+        {
+            return false;
+        }
+
+        var dpi = NativeMethods.GetDpiForWindow(window);
+        if (dpi == 0)
+        {
+            dpi = 96;
+        }
+
+        var scale = dpi / 96f;
+        var buttonSize = Math.Max(
+            24,
+            (int)Math.Round(27 * scale));
+
+        var gap = Math.Max(
+            5,
+            (int)Math.Round(7 * scale));
+
+        var x = 0;
+        var y = 0;
+        var usedCaptionBounds = false;
+
+        NativeMethods.Rect captionButtons;
+        var captionResult =
+            NativeMethods.DwmGetWindowAttributeRect(
+                window,
+                DwmwaCaptionButtonBounds,
+                out captionButtons,
+                Marshal.SizeOf<NativeMethods.Rect>());
+
+        if (captionResult == 0 &&
+            captionButtons.Right > captionButtons.Left &&
+            captionButtons.Bottom > captionButtons.Top)
+        {
+            var captionWidth =
+                captionButtons.Right - captionButtons.Left;
+
+            var captionHeight =
+                captionButtons.Bottom - captionButtons.Top;
+
+            var windowWidth =
+                windowRectangle.Right - windowRectangle.Left;
+
+            if (captionButtons.Left >= 0 &&
+                captionButtons.Right <=
+                    windowWidth + (int)(24 * scale) &&
+                captionWidth >= (int)(60 * scale) &&
+                captionHeight >= (int)(20 * scale))
+            {
+                x =
+                    windowRectangle.Left +
+                    captionButtons.Left -
+                    buttonSize -
+                    gap;
+
+                y =
+                    windowRectangle.Top +
+                    captionButtons.Top +
+                    Math.Max(
+                        0,
+                        (captionHeight - buttonSize) / 2);
+
+                usedCaptionBounds = true;
+            }
+        }
+
+        if (!usedCaptionBounds)
+        {
+            var systemButtonsWidth =
+                (int)Math.Round(138 * scale);
+
+            x =
+                windowRectangle.Right -
+                systemButtonsWidth -
+                buttonSize -
+                gap;
+
+            y =
+                windowRectangle.Top +
+                Math.Max(
+                    1,
+                    (int)Math.Round(3 * scale));
+        }
+
+        var windowHeight =
+            windowRectangle.Bottom -
+            windowRectangle.Top;
+
+        if (x < windowRectangle.Left ||
+            x + buttonSize > windowRectangle.Right ||
+            y < windowRectangle.Top ||
+            y + buttonSize > windowRectangle.Bottom ||
+            windowHeight < buttonSize + 8)
+        {
+            return false;
+        }
+
+        bounds = new Rectangle(
+            x,
+            y,
+            buttonSize,
+            buttonSize);
+
+        return true;
+    }
+
+    private static bool GetDarkTitleBarState(
+        IntPtr window)
+    {
+        int darkMode;
+
+        var result =
+            NativeMethods.DwmGetWindowAttributeInt(
+                window,
+                DwmwaUseImmersiveDarkMode,
+                out darkMode,
+                sizeof(int));
+
+        if (result == 0)
+        {
+            return darkMode != 0;
+        }
+
+        return IsSystemDarkMode();
+    }
+
+    private static bool IsSystemDarkMode()
+    {
+        try
+        {
+            using var key =
+                Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                    @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+
+            var value = key?.GetValue(
+                "AppsUseLightTheme");
+
+            return value is int lightTheme &&
+                   lightTheme == 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+}
+
+internal static class WindowFiltering
+{
+    private const int GwlStyle = -16;
+    private const int GwlExStyle = -20;
+
+    private const long WsCaption = 0x00C00000L;
+    private const long WsExToolWindow = 0x00000080L;
+
+    private const int DwmwaCloaked = 14;
+
+    private static readonly uint CurrentProcessId =
+        (uint)Environment.ProcessId;
+
+    private static readonly HashSet<string> IgnoredClasses =
+        new(StringComparer.Ordinal)
+        {
+            "Progman",
+            "WorkerW",
+            "Shell_TrayWnd",
+            "Shell_SecondaryTrayWnd",
+            "NotifyIconOverflowWindow",
+            "DV2ControlHost",
+            "MultitaskingViewFrame"
+        };
+
+    public static bool IsEligible(
+        IntPtr window)
+    {
+        if (window == IntPtr.Zero ||
+            !NativeMethods.IsWindow(window) ||
+            !NativeMethods.IsWindowVisible(window) ||
+            NativeMethods.IsIconic(window))
+        {
+            return false;
+        }
+
+        NativeMethods.GetWindowThreadProcessId(
+            window,
+            out var processId);
+
+        if (processId == CurrentProcessId)
+        {
+            return false;
+        }
+
+        if (IsCloaked(window))
+        {
+            return false;
+        }
+
+        var className =
+            WindowText.GetClassName(window);
+
+        if (IgnoredClasses.Contains(className))
+        {
+            return false;
+        }
+
+        var style =
+            NativeMethods.GetWindowLongPtr(
+                window,
+                GwlStyle).ToInt64();
+
+        if ((style & WsCaption) != WsCaption)
+        {
+            return false;
+        }
+
+        var extendedStyle =
+            NativeMethods.GetWindowLongPtr(
+                window,
+                GwlExStyle).ToInt64();
+
+        if ((extendedStyle & WsExToolWindow) != 0)
+        {
+            return false;
+        }
+
+        if (!NativeMethods.GetWindowRect(
+                window,
+                out var rectangle))
+        {
+            return false;
+        }
+
+        var width =
+            rectangle.Right - rectangle.Left;
+
+        var height =
+            rectangle.Bottom - rectangle.Top;
+
+        return width >= 240 && height >= 80;
+    }
+
+    private static bool IsCloaked(
+        IntPtr window)
+    {
+        int cloaked;
+
+        var result =
+            NativeMethods.DwmGetWindowAttributeInt(
+                window,
+                DwmwaCloaked,
+                out cloaked,
+                sizeof(int));
+
+        return result == 0 && cloaked != 0;
+    }
+}
+
+internal sealed class HotkeyWindow :
+    NativeWindow,
+    IDisposable
 {
     private const int HotkeyId = 1;
     private const int WmHotkey = 0x0312;
@@ -95,16 +1255,22 @@ internal sealed class HotkeyWindow : NativeWindow, IDisposable
         _onHotkey = onHotkey;
         CreateHandle(new CreateParams());
 
-        var registered = NativeMethods.RegisterHotKey(
-            Handle,
-            HotkeyId,
-            ModAlt | ModControl | ModNoRepeat,
-            VkT);
+        var registered =
+            NativeMethods.RegisterHotKey(
+                Handle,
+                HotkeyId,
+                ModAlt |
+                ModControl |
+                ModNoRepeat,
+                VkT);
 
         if (!registered)
         {
-            var error = new Win32Exception(Marshal.GetLastWin32Error());
+            var error = new Win32Exception(
+                Marshal.GetLastWin32Error());
+
             DestroyHandle();
+
             throw new InvalidOperationException(
                 "Не удалось зарегистрировать Ctrl + Alt + T. " +
                 "Возможно, это сочетание уже занято другой программой.\n\n" +
@@ -113,9 +1279,11 @@ internal sealed class HotkeyWindow : NativeWindow, IDisposable
         }
     }
 
-    protected override void WndProc(ref Message message)
+    protected override void WndProc(
+        ref Message message)
     {
-        if (message.Msg == WmHotkey && message.WParam.ToInt32() == HotkeyId)
+        if (message.Msg == WmHotkey &&
+            message.WParam.ToInt32() == HotkeyId)
         {
             _onHotkey();
         }
@@ -131,139 +1299,491 @@ internal sealed class HotkeyWindow : NativeWindow, IDisposable
         }
 
         _disposed = true;
-        NativeMethods.UnregisterHotKey(Handle, HotkeyId);
+
+        NativeMethods.UnregisterHotKey(
+            Handle,
+            HotkeyId);
+
         DestroyHandle();
+
         GC.SuppressFinalize(this);
     }
 }
 
 internal static class WindowPinning
 {
-    private static readonly IntPtr HwndTopmost = new(-1);
-    private static readonly IntPtr HwndNotTopmost = new(-2);
+    private static readonly IntPtr HwndTopmost =
+        new(-1);
+
+    private static readonly IntPtr HwndNotTopmost =
+        new(-2);
 
     private const int GwlExStyle = -20;
     private const long WsExTopmost = 0x00000008L;
 
-    private const uint SwpNoSize = 0x0001;
-    private const uint SwpNoMove = 0x0002;
-    private const uint SwpNoActivate = 0x0010;
-
-    public static ToggleResult ToggleForegroundWindow()
+    public static ToggleResult ToggleWindow(
+        IntPtr window)
     {
-        var window = NativeMethods.GetForegroundWindow();
-
-        if (window == IntPtr.Zero)
+        if (window == IntPtr.Zero ||
+            !NativeMethods.IsWindow(window))
         {
-            return ToggleResult.Error("Активное окно не найдено.");
+            return ToggleResult.Error(
+                "Окно не найдено.");
         }
 
-        var className = GetClassName(window);
-        if (className is "Progman" or "WorkerW" or "Shell_TrayWnd")
+        var className =
+            WindowText.GetClassName(window);
+
+        if (className is
+            "Progman" or
+            "WorkerW" or
+            "Shell_TrayWnd" or
+            "Shell_SecondaryTrayWnd")
         {
-            return ToggleResult.Error("Рабочий стол и панель задач закреплять нельзя.");
+            return ToggleResult.Error(
+                "Рабочий стол и панель задач закреплять нельзя.");
         }
 
-        var extendedStyle = NativeMethods.GetWindowLongPtr(window, GwlExStyle).ToInt64();
-        var isCurrentlyTopmost = (extendedStyle & WsExTopmost) != 0;
-        var newPosition = isCurrentlyTopmost ? HwndNotTopmost : HwndTopmost;
+        var wasTopMost = IsTopMost(window);
 
-        var changed = NativeMethods.SetWindowPos(
-            window,
-            newPosition,
-            0,
-            0,
-            0,
-            0,
-            SwpNoMove | SwpNoSize | SwpNoActivate);
+        var newPosition = wasTopMost
+            ? HwndNotTopmost
+            : HwndTopmost;
+
+        var changed =
+            NativeMethods.SetWindowPos(
+                window,
+                newPosition,
+                0,
+                0,
+                0,
+                0,
+                NativeMethods.SwpNoMove |
+                NativeMethods.SwpNoSize |
+                NativeMethods.SwpNoActivate);
 
         if (!changed)
         {
-            var error = new Win32Exception(Marshal.GetLastWin32Error());
-            return ToggleResult.Error($"Windows не разрешила изменить окно: {error.Message}");
+            var error = new Win32Exception(
+                Marshal.GetLastWin32Error());
+
+            return ToggleResult.Error(
+                $"Windows не разрешила изменить окно: {error.Message}");
         }
 
-        var title = GetWindowTitle(window);
-        var action = isCurrentlyTopmost ? "Откреплено" : "Закреплено поверх окон";
+        var title =
+            WindowText.GetWindowTitle(window);
 
-        return ToggleResult.Ok($"{action}: {title}");
+        var action = wasTopMost
+            ? "Откреплено"
+            : "Закреплено поверх окон";
+
+        return ToggleResult.Ok(
+            $"{action}: {title}");
     }
 
-    private static string GetWindowTitle(IntPtr window)
+    public static bool IsTopMost(
+        IntPtr window)
     {
-        var length = NativeMethods.GetWindowTextLength(window);
-        if (length <= 0)
+        if (window == IntPtr.Zero ||
+            !NativeMethods.IsWindow(window))
         {
-            var className = GetClassName(window);
-            return string.IsNullOrWhiteSpace(className) ? "окно без названия" : className;
+            return false;
         }
 
-        var buffer = new StringBuilder(length + 1);
-        NativeMethods.GetWindowText(window, buffer, buffer.Capacity);
+        var extendedStyle =
+            NativeMethods.GetWindowLongPtr(
+                window,
+                GwlExStyle).ToInt64();
+
+        return (extendedStyle & WsExTopmost) != 0;
+    }
+}
+
+internal static class WindowText
+{
+    public static string GetWindowTitle(
+        IntPtr window)
+    {
+        var length =
+            NativeMethods.GetWindowTextLength(
+                window);
+
+        if (length <= 0)
+        {
+            var className =
+                GetClassName(window);
+
+            return string.IsNullOrWhiteSpace(
+                className)
+                ? "окно без названия"
+                : className;
+        }
+
+        var buffer =
+            new StringBuilder(length + 1);
+
+        NativeMethods.GetWindowText(
+            window,
+            buffer,
+            buffer.Capacity);
+
         return buffer.ToString();
     }
 
-    private static string GetClassName(IntPtr window)
+    public static string GetClassName(
+        IntPtr window)
     {
         var buffer = new StringBuilder(256);
-        NativeMethods.GetClassName(window, buffer, buffer.Capacity);
+
+        NativeMethods.GetClassName(
+            window,
+            buffer,
+            buffer.Capacity);
+
         return buffer.ToString();
     }
 }
 
-internal readonly record struct ToggleResult(bool Success, string Message)
+internal readonly record struct ToggleResult(
+    bool Success,
+    string Message)
 {
-    public static ToggleResult Ok(string message) => new(true, message);
-    public static ToggleResult Error(string message) => new(false, message);
+    public static ToggleResult Ok(
+        string message) =>
+        new(true, message);
+
+    public static ToggleResult Error(
+        string message) =>
+        new(false, message);
 }
 
 internal static class NativeMethods
 {
-    [DllImport("user32.dll", SetLastError = true)]
+    internal static readonly IntPtr HwndTop = IntPtr.Zero;
+
+    internal const int SwHide = 0;
+    internal const int SwShowNoActivate = 4;
+
+    internal const uint SwpNoSize = 0x0001;
+    internal const uint SwpNoMove = 0x0002;
+    internal const uint SwpNoActivate = 0x0010;
+    internal const uint SwpShowWindow = 0x0040;
+    internal const uint SwpNoOwnerZOrder = 0x0200;
+
+    internal const uint EventSystemForeground = 0x0003;
+    internal const uint EventSystemMoveSizeStart = 0x000A;
+    internal const uint EventSystemMoveSizeEnd = 0x000B;
+    internal const uint EventSystemMinimizeStart = 0x0016;
+    internal const uint EventSystemMinimizeEnd = 0x0017;
+
+    internal const uint EventObjectDestroy = 0x8001;
+    internal const uint EventObjectShow = 0x8002;
+    internal const uint EventObjectHide = 0x8003;
+    internal const uint EventObjectLocationChange = 0x800B;
+
+    internal const int ObjIdWindow = 0;
+
+    internal const uint WinEventOutOfContext = 0x0000;
+    internal const uint WinEventSkipOwnProcess = 0x0002;
+
+    internal const byte AcSrcOver = 0x00;
+    internal const byte AcSrcAlpha = 0x01;
+    internal const uint UlwAlpha = 0x00000002;
+
+    private const int GwlHwndParent = -8;
+
+    internal delegate void WinEventDelegate(
+        IntPtr hook,
+        uint eventType,
+        IntPtr window,
+        int objectId,
+        int childId,
+        uint eventThread,
+        uint eventTime);
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Rect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Point
+    {
+        public int X;
+        public int Y;
+
+        public Point(int x, int y)
+        {
+            X = x;
+            Y = y;
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Size
+    {
+        public int Width;
+        public int Height;
+
+        public Size(int width, int height)
+        {
+            Width = width;
+            Height = height;
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    internal struct BlendFunction
+    {
+        public byte BlendOp;
+        public byte BlendFlags;
+        public byte SourceConstantAlpha;
+        public byte AlphaFormat;
+    }
+
+    [DllImport(
+        "user32.dll",
+        SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool RegisterHotKey(
-        IntPtr hWnd,
+        IntPtr window,
         int id,
-        uint fsModifiers,
-        uint vk);
+        uint modifiers,
+        uint virtualKey);
 
-    [DllImport("user32.dll", SetLastError = true)]
+    [DllImport(
+        "user32.dll",
+        SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+    internal static extern bool UnregisterHotKey(
+        IntPtr window,
+        int id);
 
     [DllImport("user32.dll")]
     internal static extern IntPtr GetForegroundWindow();
 
-    [DllImport("user32.dll", SetLastError = true)]
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool IsWindow(
+        IntPtr window);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool IsWindowVisible(
+        IntPtr window);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool IsIconic(
+        IntPtr window);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool ShowWindow(
+        IntPtr window,
+        int command);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetWindowRect(
+        IntPtr window,
+        out Rect rectangle);
+
+    [DllImport("user32.dll")]
+    internal static extern uint GetDpiForWindow(
+        IntPtr window);
+
+    [DllImport(
+        "user32.dll",
+        SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool SetWindowPos(
-        IntPtr hWnd,
-        IntPtr hWndInsertAfter,
+        IntPtr window,
+        IntPtr insertAfter,
         int x,
         int y,
         int width,
         int height,
         uint flags);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    internal static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int maxCount);
+    [DllImport(
+        "user32.dll",
+        CharSet = CharSet.Unicode)]
+    internal static extern int GetWindowText(
+        IntPtr window,
+        StringBuilder text,
+        int maximumCount);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    internal static extern int GetWindowTextLength(IntPtr hWnd);
+    [DllImport(
+        "user32.dll",
+        CharSet = CharSet.Unicode)]
+    internal static extern int GetWindowTextLength(
+        IntPtr window);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    internal static extern int GetClassName(IntPtr hWnd, StringBuilder className, int maxCount);
+    [DllImport(
+        "user32.dll",
+        CharSet = CharSet.Unicode)]
+    internal static extern int GetClassName(
+        IntPtr window,
+        StringBuilder className,
+        int maximumCount);
 
-    internal static IntPtr GetWindowLongPtr(IntPtr hWnd, int index)
+    [DllImport("user32.dll")]
+    internal static extern uint GetWindowThreadProcessId(
+        IntPtr window,
+        out uint processId);
+
+    [DllImport(
+        "dwmapi.dll",
+        EntryPoint = "DwmGetWindowAttribute")]
+    internal static extern int DwmGetWindowAttributeRect(
+        IntPtr window,
+        int attribute,
+        out Rect value,
+        int valueSize);
+
+    [DllImport(
+        "dwmapi.dll",
+        EntryPoint = "DwmGetWindowAttribute")]
+    internal static extern int DwmGetWindowAttributeInt(
+        IntPtr window,
+        int attribute,
+        out int value,
+        int valueSize);
+
+    [DllImport(
+        "user32.dll",
+        SetLastError = true)]
+    internal static extern IntPtr SetWinEventHook(
+        uint eventMinimum,
+        uint eventMaximum,
+        IntPtr module,
+        WinEventDelegate callback,
+        uint processId,
+        uint threadId,
+        uint flags);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool UnhookWinEvent(
+        IntPtr hook);
+
+    [DllImport("user32.dll")]
+    internal static extern IntPtr GetDC(
+        IntPtr window);
+
+    [DllImport("user32.dll")]
+    internal static extern int ReleaseDC(
+        IntPtr window,
+        IntPtr deviceContext);
+
+    [DllImport("gdi32.dll")]
+    internal static extern IntPtr CreateCompatibleDC(
+        IntPtr deviceContext);
+
+    [DllImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool DeleteDC(
+        IntPtr deviceContext);
+
+    [DllImport("gdi32.dll")]
+    internal static extern IntPtr SelectObject(
+        IntPtr deviceContext,
+        IntPtr graphicsObject);
+
+    [DllImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool DeleteObject(
+        IntPtr graphicsObject);
+
+    [DllImport(
+        "user32.dll",
+        SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool UpdateLayeredWindow(
+        IntPtr window,
+        IntPtr destinationDeviceContext,
+        ref Point destinationPoint,
+        ref Size windowSize,
+        IntPtr sourceDeviceContext,
+        ref Point sourcePoint,
+        int colorKey,
+        ref BlendFunction blendFunction,
+        uint flags);
+
+    internal static IntPtr GetWindowLongPtr(
+        IntPtr window,
+        int index)
     {
         return IntPtr.Size == 8
-            ? GetWindowLongPtr64(hWnd, index)
-            : new IntPtr(GetWindowLong32(hWnd, index));
+            ? GetWindowLongPtr64(window, index)
+            : new IntPtr(
+                GetWindowLong32(window, index));
     }
 
-    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
-    private static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int index);
+    internal static IntPtr SetWindowOwner(
+        IntPtr window,
+        IntPtr owner)
+    {
+        return SetWindowLongPtr(
+            window,
+            GwlHwndParent,
+            owner);
+    }
 
-    [DllImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)]
-    private static extern int GetWindowLong32(IntPtr hWnd, int index);
+    private static IntPtr SetWindowLongPtr(
+        IntPtr window,
+        int index,
+        IntPtr newValue)
+    {
+        return IntPtr.Size == 8
+            ? SetWindowLongPtr64(
+                window,
+                index,
+                newValue)
+            : new IntPtr(
+                SetWindowLong32(
+                    window,
+                    index,
+                    newValue.ToInt32()));
+    }
+
+    [DllImport(
+        "user32.dll",
+        EntryPoint = "GetWindowLongPtrW",
+        SetLastError = true)]
+    private static extern IntPtr GetWindowLongPtr64(
+        IntPtr window,
+        int index);
+
+    [DllImport(
+        "user32.dll",
+        EntryPoint = "GetWindowLongW",
+        SetLastError = true)]
+    private static extern int GetWindowLong32(
+        IntPtr window,
+        int index);
+
+    [DllImport(
+        "user32.dll",
+        EntryPoint = "SetWindowLongPtrW",
+        SetLastError = true)]
+    private static extern IntPtr SetWindowLongPtr64(
+        IntPtr window,
+        int index,
+        IntPtr newValue);
+
+    [DllImport(
+        "user32.dll",
+        EntryPoint = "SetWindowLongW",
+        SetLastError = true)]
+    private static extern int SetWindowLong32(
+        IntPtr window,
+        int index,
+        int newValue);
 }

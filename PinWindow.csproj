@@ -7,5 +7,8 @@
     <Nullable>enable</Nullable>
     <AssemblyName>PinWindow</AssemblyName>
     <RootNamespace>PinWindow</RootNamespace>
+    <Version>2.0.0</Version>
+    <Authors>helliong</Authors>
+    <Description>Закрепление окон поверх остальных с помощью кнопки в заголовке или горячей клавиши.</Description>
   </PropertyGroup>
 </Project>
