@@ -3,3 +3,5 @@ obj/
 .vs/
 *.user
 *.suo
+# Release executables
+PinWindow-v*-win-x64.exe
