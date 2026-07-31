@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -51,6 +51,7 @@ internal static class Program
 internal sealed class TrayApplicationContext : ApplicationContext
 {
     private readonly NotifyIcon _notifyIcon;
+    private readonly Icon _appIcon;
     private readonly HotkeyWindow _hotkeyWindow;
     private readonly PinController _pinController;
     private readonly ToolStripMenuItem _toggleWindowItem;
@@ -105,9 +106,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_exitItem);
 
+        _appIcon = LoadAppIcon();
+
         _notifyIcon = new NotifyIcon
         {
-            Icon = SystemIcons.Application,
+            Icon = _appIcon,
             Text = "PinWindow — закрепление окон",
             ContextMenuStrip = menu,
             Visible = true
@@ -131,6 +134,23 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 "PinWindow запущен",
                 $"Откройте настройки двойным кликом по значку в трее. Горячая клавиша: {_settings.GetHotkey().DisplayText}.",
                 ToolTipIcon.Info);
+        }
+    }
+
+    private static Icon LoadAppIcon()
+    {
+        try
+        {
+            using var extractedIcon =
+                Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+
+            return extractedIcon is not null
+                ? (Icon)extractedIcon.Clone()
+                : (Icon)SystemIcons.Application.Clone();
+        }
+        catch
+        {
+            return (Icon)SystemIcons.Application.Clone();
         }
     }
 
@@ -280,6 +300,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
+        _appIcon.Dispose();
 
         base.ExitThreadCore();
     }

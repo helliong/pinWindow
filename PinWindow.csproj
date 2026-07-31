@@ -7,8 +7,14 @@
     <Nullable>enable</Nullable>
     <AssemblyName>PinWindow</AssemblyName>
     <RootNamespace>PinWindow</RootNamespace>
-    <Version>3.3.0</Version>
+    <ApplicationIcon>PinWindow.ico</ApplicationIcon>
+    <Version>3.3.1</Version>
     <Authors>helliong</Authors>
     <Description>Закрепление активного окна поверх остальных с помощью кнопки в заголовке или горячей клавиши.</Description>
   </PropertyGroup>
+  <ItemGroup>
+  <EmbeddedResource Include="PinWindow.ico">
+    <LogicalName>PinWindow.ico</LogicalName>
+  </EmbeddedResource>
+</ItemGroup>
 </Project>
