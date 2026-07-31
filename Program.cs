@@ -53,33 +53,57 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly NotifyIcon _notifyIcon;
     private readonly HotkeyWindow _hotkeyWindow;
     private readonly PinController _pinController;
+    private readonly ToolStripMenuItem _toggleWindowItem;
+    private readonly ToolStripMenuItem _settingsItem;
     private readonly ToolStripMenuItem _showButtonItem;
+    private readonly ToolStripMenuItem _hotkeyLabel;
+    private readonly ToolStripMenuItem _exitItem;
+
+    private AppSettings _settings;
+    private SettingsForm? _settingsForm;
+    private bool _updatingMenu;
 
     public TrayApplicationContext()
     {
+        _settings = SettingsStore.Load();
+
         var menu = new ContextMenuStrip();
 
-        menu.Items.Add(
+        _toggleWindowItem = new ToolStripMenuItem(
             "Закрепить/открепить активное окно",
             null,
             (_, _) => ToggleForegroundWindow());
 
+        _settingsItem = new ToolStripMenuItem(
+            "Настройки…",
+            null,
+            (_, _) => OpenSettings());
+
         _showButtonItem = new ToolStripMenuItem(
             "Показывать кнопку у активного окна")
         {
-            Checked = true,
             CheckOnClick = true
         };
+        _showButtonItem.CheckedChanged += (_, _) =>
+            ToggleButtonVisibilityFromMenu();
 
+        _hotkeyLabel = new ToolStripMenuItem
+        {
+            Enabled = false
+        };
+
+        _exitItem = new ToolStripMenuItem(
+            "Выход",
+            null,
+            (_, _) => ExitThread());
+
+        menu.Items.Add(_toggleWindowItem);
+        menu.Items.Add(_settingsItem);
         menu.Items.Add(_showButtonItem);
         menu.Items.Add(new ToolStripSeparator());
-
-        var hotkeyLabel =
-            menu.Items.Add("Горячая клавиша: Ctrl + Alt + T");
-        hotkeyLabel.Enabled = false;
-
+        menu.Items.Add(_hotkeyLabel);
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Выход", null, (_, _) => ExitThread());
+        menu.Items.Add(_exitItem);
 
         _notifyIcon = new NotifyIcon
         {
@@ -88,19 +112,26 @@ internal sealed class TrayApplicationContext : ApplicationContext
             ContextMenuStrip = menu,
             Visible = true
         };
+        _notifyIcon.DoubleClick += (_, _) => OpenSettings();
 
-        _pinController = new PinController(ShowResult);
+        _pinController = new PinController(
+            _settings,
+            ShowResult);
 
-        _showButtonItem.CheckedChanged += (_, _) =>
-            _pinController.Enabled = _showButtonItem.Checked;
+        _hotkeyWindow = new HotkeyWindow(
+            ToggleForegroundWindow,
+            _settings.GetHotkey());
 
-        _hotkeyWindow = new HotkeyWindow(ToggleForegroundWindow);
+        UpdateMenuFromSettings();
 
-        _notifyIcon.ShowBalloonTip(
-            2600,
-            "PinWindow запущен",
-            "Кнопка-булавка показывается у активного окна. Также работает Ctrl + Alt + T.",
-            ToolTipIcon.Info);
+        if (_settings.ShowNotifications)
+        {
+            _notifyIcon.ShowBalloonTip(
+                2600,
+                "PinWindow запущен",
+                $"Откройте настройки двойным кликом по значку в трее. Горячая клавиша: {_settings.GetHotkey().DisplayText}.",
+                ToolTipIcon.Info);
+        }
     }
 
     private void ToggleForegroundWindow()
@@ -112,8 +143,128 @@ internal sealed class TrayApplicationContext : ApplicationContext
         ShowResult(result);
     }
 
+    private void OpenSettings()
+    {
+        if (_settingsForm is { IsDisposed: false })
+        {
+            if (_settingsForm.WindowState == FormWindowState.Minimized)
+            {
+                _settingsForm.WindowState = FormWindowState.Normal;
+            }
+
+            _settingsForm.Activate();
+            _settingsForm.BringToFront();
+            return;
+        }
+
+        _settingsForm = new SettingsForm(
+            _settings,
+            ApplySettings);
+
+        _settingsForm.FormClosed += (_, _) =>
+            _settingsForm = null;
+
+        _settingsForm.Show();
+        _settingsForm.Activate();
+    }
+
+    private string? ApplySettings(AppSettings requestedSettings)
+    {
+        requestedSettings.Normalize();
+
+        var previousSettings = _settings.Clone();
+
+        try
+        {
+            _hotkeyWindow.UpdateHotkey(
+                requestedSettings.GetHotkey());
+
+            AutostartManager.SetEnabled(
+                requestedSettings.StartWithWindows);
+
+            SettingsStore.Save(requestedSettings);
+            _settings = requestedSettings.Clone();
+
+            _pinController.ApplySettings(_settings);
+            UpdateMenuFromSettings();
+
+            if (_settings.ShowNotifications)
+            {
+                _notifyIcon.ShowBalloonTip(
+                    1500,
+                    "PinWindow",
+                    "Настройки сохранены.",
+                    ToolTipIcon.Info);
+            }
+
+            return null;
+        }
+        catch (Exception exception)
+        {
+            try
+            {
+                _hotkeyWindow.UpdateHotkey(
+                    previousSettings.GetHotkey());
+
+                AutostartManager.SetEnabled(
+                    previousSettings.StartWithWindows);
+            }
+            catch
+            {
+                // Не скрываем первоначальную ошибку отката.
+            }
+
+            return exception.Message;
+        }
+    }
+
+    private void ToggleButtonVisibilityFromMenu()
+    {
+        if (_updatingMenu)
+        {
+            return;
+        }
+
+        _settings.ShowButton = _showButtonItem.Checked;
+        _pinController.ApplySettings(_settings);
+
+        try
+        {
+            SettingsStore.Save(_settings);
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(
+                exception.Message,
+                "PinWindow",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+    }
+
+    private void UpdateMenuFromSettings()
+    {
+        _updatingMenu = true;
+
+        try
+        {
+            _showButtonItem.Checked = _settings.ShowButton;
+            _hotkeyLabel.Text =
+                $"Горячая клавиша: {_settings.GetHotkey().DisplayText}";
+        }
+        finally
+        {
+            _updatingMenu = false;
+        }
+    }
+
     private void ShowResult(ToggleResult result)
     {
+        if (result.Success && !_settings.ShowNotifications)
+        {
+            return;
+        }
+
         _notifyIcon.ShowBalloonTip(
             1300,
             result.Success ? "PinWindow" : "Не удалось изменить окно",
@@ -123,6 +274,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     protected override void ExitThreadCore()
     {
+        _settingsForm?.Close();
         _pinController.Dispose();
         _hotkeyWindow.Dispose();
 
@@ -141,14 +293,20 @@ internal sealed class PinController : IDisposable
     private readonly System.Windows.Forms.Timer _settleTimer;
 
     private IntPtr _targetWindow;
-    private bool _enabled = true;
+    private bool _enabled;
     private bool _disposed;
     private int _refreshPosted;
     private int _settleAttemptsRemaining;
 
-    public PinController(Action<ToggleResult> showResult)
+    public PinController(
+        AppSettings settings,
+        Action<ToggleResult> showResult)
     {
-        _overlay = new PinOverlayForm(ToggleTargetWindow, showResult);
+        _enabled = settings.ShowButton;
+        _overlay = new PinOverlayForm(
+            ToggleTargetWindow,
+            showResult,
+            settings);
 
         _moveTimer = new System.Windows.Forms.Timer
         {
@@ -156,9 +314,6 @@ internal sealed class PinController : IDisposable
         };
         _moveTimer.Tick += (_, _) => UpdateOverlayPosition();
 
-        // После разворачивания/изменения размера DWM иногда несколько
-        // десятков миллисекунд возвращает старые границы кнопок заголовка.
-        // Короткие повторные проверки возвращают булавку без дополнительного клика.
         _settleTimer = new System.Windows.Forms.Timer
         {
             Interval = 45
@@ -177,7 +332,10 @@ internal sealed class PinController : IDisposable
 
         _eventMonitor = new WinEventMonitor(OnWinEvent);
 
-        RefreshNow();
+        if (_enabled)
+        {
+            RefreshNow();
+        }
     }
 
     public bool Enabled
@@ -204,6 +362,18 @@ internal sealed class PinController : IDisposable
                 _overlay.HideOverlay();
                 _targetWindow = IntPtr.Zero;
             }
+        }
+    }
+
+    public void ApplySettings(AppSettings settings)
+    {
+        _overlay.ApplySettings(settings);
+        Enabled = settings.ShowButton;
+
+        if (Enabled)
+        {
+            RefreshNow();
+            ScheduleSettledRefresh();
         }
     }
 
@@ -433,13 +603,19 @@ internal sealed class PinOverlayForm : Form
     private bool _isPinned;
     private bool _isHovered;
     private bool _isDarkTitleBar;
+    private OverlayVisualStyle _visualStyle = OverlayVisualStyle.Default;
+    private AppSettings _settings;
+    private Color _activeColor;
 
     public PinOverlayForm(
         Func<ToggleResult> toggleTarget,
-        Action<ToggleResult> showResult)
+        Action<ToggleResult> showResult,
+        AppSettings settings)
     {
         _toggleTarget = toggleTarget;
         _showResult = showResult;
+        _settings = settings.Clone();
+        _activeColor = _settings.GetActiveColor();
 
         AutoScaleMode = AutoScaleMode.None;
         FormBorderStyle = FormBorderStyle.None;
@@ -473,9 +649,21 @@ internal sealed class PinOverlayForm : Form
         }
     }
 
+    public void ApplySettings(AppSettings settings)
+    {
+        _settings = settings.Clone();
+        _activeColor = _settings.GetActiveColor();
+
+        if (!_lastBounds.IsEmpty)
+        {
+            UpdateFromTarget();
+        }
+    }
+
     public void AttachTo(IntPtr targetWindow)
     {
         _targetWindow = targetWindow;
+        _visualStyle = WindowProfiles.GetVisualStyle(targetWindow);
 
         if (targetWindow != IntPtr.Zero)
         {
@@ -498,6 +686,8 @@ internal sealed class PinOverlayForm : Form
 
         if (!WindowOverlayGeometry.TryGetButtonBounds(
                 _targetWindow,
+                _visualStyle,
+                _settings,
                 out var bounds,
                 out var isDarkTitleBar))
         {
@@ -644,6 +834,12 @@ internal sealed class PinOverlayForm : Form
 
     private void DrawButton(Graphics graphics, Size size)
     {
+        if (_visualStyle == OverlayVisualStyle.Telegram)
+        {
+            DrawTelegramButton(graphics, size);
+            return;
+        }
+
         var scale = Math.Max(0.75f, size.Width / 28f);
         var centerX = size.Width / 2f;
         var centerY = size.Height / 2f;
@@ -673,7 +869,7 @@ internal sealed class PinOverlayForm : Form
         }
 
         var iconColor = _isPinned
-            ? Color.FromArgb(255, 0, 120, 215)
+            ? _activeColor
             : _isDarkTitleBar
                 ? Color.FromArgb(235, 245, 245, 247)
                 : Color.FromArgb(220, 42, 42, 46);
@@ -699,6 +895,166 @@ internal sealed class PinOverlayForm : Form
             iconColor,
             filled: _isPinned,
             thicknessMultiplier: 1f);
+    }
+
+    private void DrawTelegramButton(
+        Graphics graphics,
+        Size size)
+    {
+        var centerX = size.Width / 2f;
+        var centerY = size.Height / 2f;
+        var scale = Math.Max(
+            0.68f,
+            Math.Min(0.92f, size.Width / 35f));
+
+        if (_isHovered)
+        {
+            var hoverRectangle = new RectangleF(
+                1f,
+                1f,
+                size.Width - 2f,
+                size.Height - 2f);
+
+            using var hoverPath = CreateRoundedRectanglePath(
+                hoverRectangle,
+                Math.Max(3f, size.Width * 0.14f));
+
+            using var hoverBrush = new SolidBrush(
+                Color.FromArgb(28, 255, 255, 255));
+
+            graphics.FillPath(
+                hoverBrush,
+                hoverPath);
+        }
+
+        var iconColor = _isPinned
+            ? _activeColor
+            : Color.FromArgb(165, 167, 184, 201);
+
+        DrawCompactPin(
+            graphics,
+            centerX,
+            centerY + 0.2f,
+            scale,
+            iconColor,
+            _isPinned);
+    }
+
+    private static void DrawCompactPin(
+        Graphics graphics,
+        float centerX,
+        float centerY,
+        float scale,
+        Color color,
+        bool filled)
+    {
+        using var pen = new Pen(
+            color,
+            Math.Max(1.15f, 1.35f * scale))
+        {
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round,
+            LineJoin = LineJoin.Round
+        };
+
+        using var brush = new SolidBrush(color);
+
+        var headWidth = 8.2f * scale;
+        var headHeight = 3.6f * scale;
+
+        var head = new RectangleF(
+            centerX - headWidth / 2f,
+            centerY - 6.5f * scale,
+            headWidth,
+            headHeight);
+
+        if (filled)
+        {
+            graphics.FillRectangle(brush, head);
+        }
+        else
+        {
+            graphics.DrawRectangle(
+                pen,
+                head.X,
+                head.Y,
+                head.Width,
+                head.Height);
+        }
+
+        var shoulderY = centerY - 2.3f * scale;
+        var baseY = centerY + 2.4f * scale;
+
+        graphics.DrawLine(
+            pen,
+            centerX - 3.2f * scale,
+            shoulderY,
+            centerX - 4.6f * scale,
+            baseY);
+
+        graphics.DrawLine(
+            pen,
+            centerX + 3.2f * scale,
+            shoulderY,
+            centerX + 4.6f * scale,
+            baseY);
+
+        graphics.DrawLine(
+            pen,
+            centerX - 4.6f * scale,
+            baseY,
+            centerX + 4.6f * scale,
+            baseY);
+
+        graphics.DrawLine(
+            pen,
+            centerX,
+            baseY,
+            centerX,
+            centerY + 7.6f * scale);
+    }
+
+    private static GraphicsPath CreateRoundedRectanglePath(
+        RectangleF rectangle,
+        float radius)
+    {
+        var diameter = radius * 2f;
+        var path = new GraphicsPath();
+
+        path.AddArc(
+            rectangle.Left,
+            rectangle.Top,
+            diameter,
+            diameter,
+            180,
+            90);
+
+        path.AddArc(
+            rectangle.Right - diameter,
+            rectangle.Top,
+            diameter,
+            diameter,
+            270,
+            90);
+
+        path.AddArc(
+            rectangle.Right - diameter,
+            rectangle.Bottom - diameter,
+            diameter,
+            diameter,
+            0,
+            90);
+
+        path.AddArc(
+            rectangle.Left,
+            rectangle.Bottom - diameter,
+            diameter,
+            diameter,
+            90,
+            90);
+
+        path.CloseFigure();
+        return path;
     }
 
     private static void DrawPin(
@@ -959,6 +1315,50 @@ internal sealed class WinEventMonitor : IDisposable
     }
 }
 
+internal enum OverlayVisualStyle
+{
+    Default,
+    Telegram
+}
+
+internal static class WindowProfiles
+{
+    public static OverlayVisualStyle GetVisualStyle(
+        IntPtr window)
+    {
+        if (window == IntPtr.Zero)
+        {
+            return OverlayVisualStyle.Default;
+        }
+
+        NativeMethods.GetWindowThreadProcessId(
+            window,
+            out var processId);
+
+        if (processId == 0)
+        {
+            return OverlayVisualStyle.Default;
+        }
+
+        try
+        {
+            using var process =
+                System.Diagnostics.Process.GetProcessById(
+                    checked((int)processId));
+
+            return process.ProcessName.Equals(
+                "Telegram",
+                StringComparison.OrdinalIgnoreCase)
+                ? OverlayVisualStyle.Telegram
+                : OverlayVisualStyle.Default;
+        }
+        catch
+        {
+            return OverlayVisualStyle.Default;
+        }
+    }
+}
+
 internal static class WindowOverlayGeometry
 {
     private const int DwmwaCaptionButtonBounds = 5;
@@ -966,6 +1366,8 @@ internal static class WindowOverlayGeometry
 
     public static bool TryGetButtonBounds(
         IntPtr window,
+        OverlayVisualStyle visualStyle,
+        AppSettings settings,
         out Rectangle bounds,
         out bool isDarkTitleBar)
     {
@@ -988,13 +1390,24 @@ internal static class WindowOverlayGeometry
         }
 
         var scale = dpi / 96f;
-        var buttonSize = Math.Max(
-            24,
-            (int)Math.Round(27 * scale));
+        var isTelegram =
+            visualStyle == OverlayVisualStyle.Telegram;
 
-        var gap = Math.Max(
-            5,
-            (int)Math.Round(7 * scale));
+        var logicalButtonSize = isTelegram
+            ? Math.Max(20, settings.PinSize - 3)
+            : settings.PinSize;
+
+        var buttonSize = Math.Max(
+            18,
+            (int)Math.Round(logicalButtonSize * scale));
+
+        var gap = isTelegram
+            ? Math.Max(
+                2,
+                (int)Math.Round(2 * scale))
+            : Math.Max(
+                5,
+                (int)Math.Round(7 * scale));
 
         var x = 0;
         var y = 0;
@@ -1008,7 +1421,8 @@ internal static class WindowOverlayGeometry
                 out captionButtons,
                 Marshal.SizeOf<NativeMethods.Rect>());
 
-        if (captionResult == 0 &&
+        if (!isTelegram &&
+            captionResult == 0 &&
             captionButtons.Right > captionButtons.Left &&
             captionButtons.Bottom > captionButtons.Top)
         {
@@ -1046,8 +1460,12 @@ internal static class WindowOverlayGeometry
 
         if (!usedCaptionBounds)
         {
-            var systemButtonsWidth =
-                (int)Math.Round(138 * scale);
+            // Telegram Desktop сам рисует заголовок. Его блок системных
+            // кнопок заметно уже стандартного DWM-блока, поэтому для него
+            // используется отдельная базовая ширина.
+            var systemButtonsWidth = isTelegram
+                ? (int)Math.Round(108 * scale)
+                : (int)Math.Round(138 * scale);
 
             x =
                 windowRectangle.Right -
@@ -1059,8 +1477,12 @@ internal static class WindowOverlayGeometry
                 windowRectangle.Top +
                 Math.Max(
                     1,
-                    (int)Math.Round(3 * scale));
+                    (int)Math.Round(
+                        (isTelegram ? 4 : 3) * scale));
         }
+
+        x += (int)Math.Round(settings.OffsetX * scale);
+        y += (int)Math.Round(settings.OffsetY * scale);
 
         var windowHeight =
             windowRectangle.Bottom -
@@ -1241,46 +1663,78 @@ internal sealed class HotkeyWindow :
 {
     private const int HotkeyId = 1;
     private const int WmHotkey = 0x0312;
-
-    private const uint ModAlt = 0x0001;
-    private const uint ModControl = 0x0002;
     private const uint ModNoRepeat = 0x4000;
-    private const uint VkT = 0x54;
 
     private readonly Action _onHotkey;
+    private HotkeyDefinition _definition;
     private bool _disposed;
 
-    public HotkeyWindow(Action onHotkey)
+    public HotkeyWindow(
+        Action onHotkey,
+        HotkeyDefinition definition)
     {
         _onHotkey = onHotkey;
         CreateHandle(new CreateParams());
 
-        var registered =
-            NativeMethods.RegisterHotKey(
-                Handle,
-                HotkeyId,
-                ModAlt |
-                ModControl |
-                ModNoRepeat,
-                VkT);
+        RegisterOrThrow(definition);
+        _definition = definition;
+    }
 
-        if (!registered)
+    public void UpdateHotkey(HotkeyDefinition definition)
+    {
+        if (_definition == definition)
         {
-            var error = new Win32Exception(
-                Marshal.GetLastWin32Error());
+            return;
+        }
 
-            DestroyHandle();
+        var previous = _definition;
+        NativeMethods.UnregisterHotKey(Handle, HotkeyId);
 
-            throw new InvalidOperationException(
-                "Не удалось зарегистрировать Ctrl + Alt + T. " +
-                "Возможно, это сочетание уже занято другой программой.\n\n" +
-                error.Message,
-                error);
+        try
+        {
+            RegisterOrThrow(definition);
+            _definition = definition;
+        }
+        catch
+        {
+            try
+            {
+                RegisterOrThrow(previous);
+                _definition = previous;
+            }
+            catch
+            {
+                // Первоначальная ошибка важнее ошибки восстановления.
+            }
+
+            throw;
         }
     }
 
-    protected override void WndProc(
-        ref Message message)
+    private void RegisterOrThrow(HotkeyDefinition definition)
+    {
+        var registered = NativeMethods.RegisterHotKey(
+            Handle,
+            HotkeyId,
+            definition.NativeModifiers | ModNoRepeat,
+            (uint)definition.Key);
+
+        if (registered)
+        {
+            return;
+        }
+
+        var error = new Win32Exception(
+            Marshal.GetLastWin32Error());
+
+        throw new InvalidOperationException(
+            $"Не удалось зарегистрировать {definition.DisplayText}. " +
+            "Возможно, это сочетание уже занято другой программой.\n\n" +
+            error.Message,
+            error);
+    }
+
+    protected override void WndProc(ref Message message)
     {
         if (message.Msg == WmHotkey &&
             message.WParam.ToInt32() == HotkeyId)
@@ -1299,13 +1753,8 @@ internal sealed class HotkeyWindow :
         }
 
         _disposed = true;
-
-        NativeMethods.UnregisterHotKey(
-            Handle,
-            HotkeyId);
-
+        NativeMethods.UnregisterHotKey(Handle, HotkeyId);
         DestroyHandle();
-
         GC.SuppressFinalize(this);
     }
 }
