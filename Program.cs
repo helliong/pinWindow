@@ -1,10 +1,8 @@
 ﻿using System.ComponentModel;
-using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Windows.Forms;
 
 namespace PinWindow;
 
@@ -27,7 +25,10 @@ internal static class Program
         if (!isFirstInstance)
         {
             MessageBox.Show(
-                "PinWindow уже запущен. Найдите его значок в системном трее.",
+                AppLocalization.Text(
+                    "PinWindow уже запущен. Найдите его значок в системном трее.",
+                    "PinWindow is already running. Find its icon in the system tray."
+                ),
                 "PinWindow",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information
@@ -43,7 +44,7 @@ internal static class Program
         {
             MessageBox.Show(
                 exception.ToString(),
-                "Ошибка PinWindow",
+                AppLocalization.Text("Ошибка PinWindow", "PinWindow Error"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error
             );
@@ -60,8 +61,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly ToolStripMenuItem _toggleWindowItem;
     private readonly ToolStripMenuItem _settingsItem;
     private readonly ToolStripMenuItem _showButtonItem;
+    private readonly ToolStripMenuItem _updateItem;
     private readonly ToolStripMenuItem _hotkeyLabel;
     private readonly ToolStripMenuItem _exitItem;
+    private readonly System.Windows.Forms.Timer _updateCheckTimer;
+
+    private string? _latestReleaseUrl;
+    private string? _latestVersionText;
 
     private AppSettings _settings;
     private SettingsForm? _settingsForm;
@@ -70,30 +76,46 @@ internal sealed class TrayApplicationContext : ApplicationContext
     public TrayApplicationContext()
     {
         _settings = SettingsStore.Load();
+        AppLocalization.SetLanguage(_settings.Language);
 
         var menu = new ContextMenuStrip();
 
         _toggleWindowItem = new ToolStripMenuItem(
-            "Закрепить/открепить активное окно",
+            AppLocalization.Text("Закрепить/открепить активное окно", "Pin/unpin active window"),
             null,
             (_, _) => ToggleForegroundWindow()
         );
 
-        _settingsItem = new ToolStripMenuItem("Настройки…", null, (_, _) => OpenSettings());
-
-        _showButtonItem = new ToolStripMenuItem("Показывать кнопку у активного окна")
+        _settingsItem = new ToolStripMenuItem(
+            AppLocalization.Text("Настройки…", "Settings…"),
+            null,
+            (_, _) => OpenSettings()
+        );
+        _showButtonItem = new ToolStripMenuItem(
+            AppLocalization.Text(
+                "Показывать кнопку у активного окна",
+                "Show button near active window"
+            )
+        )
         {
             CheckOnClick = true,
         };
         _showButtonItem.CheckedChanged += (_, _) => ToggleButtonVisibilityFromMenu();
+        _updateItem = new ToolStripMenuItem { Visible = false };
+
+        _updateItem.Click += (_, _) => OpenLatestRelease();
 
         _hotkeyLabel = new ToolStripMenuItem { Enabled = false };
 
-        _exitItem = new ToolStripMenuItem("Выход", null, (_, _) => ExitThread());
-
+        _exitItem = new ToolStripMenuItem(
+            AppLocalization.Text("Выход", "Exit"),
+            null,
+            (_, _) => ExitThread()
+        );
         menu.Items.Add(_toggleWindowItem);
         menu.Items.Add(_settingsItem);
         menu.Items.Add(_showButtonItem);
+        menu.Items.Add(_updateItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_hotkeyLabel);
         menu.Items.Add(new ToolStripSeparator());
@@ -110,6 +132,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
         };
         _notifyIcon.DoubleClick += (_, _) => OpenSettings();
 
+        _updateCheckTimer = new System.Windows.Forms.Timer { Interval = 4000 };
+
+        _updateCheckTimer.Tick += CheckForUpdates;
+        _updateCheckTimer.Start();
+
         _pinController = new PinController(_settings, ShowResult);
 
         _hotkeyWindow = new HotkeyWindow(ToggleForegroundWindow, _settings.GetHotkey());
@@ -120,8 +147,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             _notifyIcon.ShowBalloonTip(
                 2600,
-                "PinWindow запущен",
-                $"Откройте настройки двойным кликом по значку в трее. Горячая клавиша: {_settings.GetHotkey().DisplayText}.",
+                AppLocalization.Text("PinWindow запущен", "PinWindow is running"),
+                AppLocalization.Text(
+                    $"Откройте настройки двойным кликом по значку в трее. Горячая клавиша: {_settings.GetHotkey().DisplayText}.",
+                    $"Double-click the tray icon to open settings. Hotkey: {_settings.GetHotkey().DisplayText}."
+                ),
                 ToolTipIcon.Info
             );
         }
@@ -150,6 +180,74 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         _pinController.RefreshNow();
         ShowResult(result);
+    }
+
+    private async void CheckForUpdates(object? sender, EventArgs eventArgs)
+    {
+        _updateCheckTimer.Stop();
+
+        var update = await UpdateChecker.CheckAsync();
+
+        if (update is null)
+        {
+            return;
+        }
+
+        _latestReleaseUrl = update.ReleaseUrl;
+
+        var versionText =
+            update.Version.Build >= 0
+                ? $"{update.Version.Major}.{update.Version.Minor}.{update.Version.Build}"
+                : $"{update.Version.Major}.{update.Version.Minor}";
+        _latestVersionText = versionText;
+
+        _updateItem.Text = AppLocalization.Text(
+            $"Скачать обновление v{versionText}",
+            $"Download update v{versionText}"
+        );
+
+        _updateItem.Visible = true;
+
+        var currentVersion = typeof(Program).Assembly.GetName().Version ?? new Version(0, 0, 0);
+
+        using var updateForm = new UpdateAvailableForm(
+            currentVersion,
+            update.Version,
+            OpenLatestRelease
+        );
+
+        updateForm.ShowDialog();
+    }
+
+    private void OpenLatestRelease()
+    {
+        if (string.IsNullOrWhiteSpace(_latestReleaseUrl))
+        {
+            return;
+        }
+
+        try
+        {
+            System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = _latestReleaseUrl,
+                    UseShellExecute = true,
+                }
+            );
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(
+                exception.Message,
+                AppLocalization.Text(
+                    "Не удалось открыть страницу обновления",
+                    "Failed to open update page"
+                ),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error
+            );
+        }
     }
 
     private void OpenSettings()
@@ -188,7 +286,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
             SettingsStore.Save(requestedSettings);
             _settings = requestedSettings.Clone();
-
+            AppLocalization.SetLanguage(_settings.Language);
             _pinController.ApplySettings(_settings);
             UpdateMenuFromSettings();
 
@@ -197,7 +295,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 _notifyIcon.ShowBalloonTip(
                     1500,
                     "PinWindow",
-                    "Настройки сохранены.",
+                    AppLocalization.Text("Настройки сохранены.", "Settings saved."),
                     ToolTipIcon.Info
                 );
             }
@@ -252,8 +350,35 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         try
         {
+            _toggleWindowItem.Text = AppLocalization.Text(
+                "Закрепить/открепить активное окно",
+                "Pin/unpin active window"
+            );
+
+            _settingsItem.Text = AppLocalization.Text("Настройки…", "Settings…");
+
+            _showButtonItem.Text = AppLocalization.Text(
+                "Показывать кнопку у активного окна",
+                "Show button near active window"
+            );
+            if (!string.IsNullOrWhiteSpace(_latestVersionText))
+            {
+                _updateItem.Text = AppLocalization.Text(
+                    $"Скачать обновление v{_latestVersionText}",
+                    $"Download update v{_latestVersionText}"
+                );
+            }
+
+            _exitItem.Text = AppLocalization.Text("Выход", "Exit");
+
+            _notifyIcon.Text = AppLocalization.Text(
+                "PinWindow — закрепление окон",
+                "PinWindow — always on top"
+            );
             _showButtonItem.Checked = _settings.ShowButton;
-            _hotkeyLabel.Text = $"Горячая клавиша: {_settings.GetHotkey().DisplayText}";
+            _hotkeyLabel.Text =
+                $"{AppLocalization.Text("Горячая клавиша", "Hotkey")}: "
+                + _settings.GetHotkey().DisplayText;
         }
         finally
         {
@@ -268,9 +393,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
             return;
         }
 
+        var title = result.Success
+            ? "PinWindow"
+            : AppLocalization.Text("Не удалось изменить окно", "Failed to change window");
+
         _notifyIcon.ShowBalloonTip(
             1300,
-            result.Success ? "PinWindow" : "Не удалось изменить окно",
+            title,
             result.Message,
             result.Success ? ToolTipIcon.Info : ToolTipIcon.Error
         );
@@ -278,6 +407,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     protected override void ExitThreadCore()
     {
+        _updateCheckTimer.Stop();
+        _updateCheckTimer.Dispose();
         _settingsForm?.Close();
         _pinController.Dispose();
         _hotkeyWindow.Dispose();
@@ -324,7 +455,7 @@ internal sealed class PinController : IDisposable
                 _settleTimer.Stop();
             }
         };
-        _recoveryTimer = new System.Windows.Forms.Timer { Interval = 500 };
+        _recoveryTimer = new System.Windows.Forms.Timer { Interval = 50 };
 
         _recoveryTimer.Tick += (_, _) =>
         {
@@ -333,13 +464,9 @@ internal sealed class PinController : IDisposable
                 return;
             }
 
-            var foregroundWindow = NativeMethods.GetForegroundWindow();
-
-            if (foregroundWindow != _targetWindow || !_overlay.IsOverlayVisible)
-            {
-                RefreshNow();
-            }
+            RefreshNow();
         };
+
         _eventMonitor = new WinEventMonitor(OnWinEvent);
 
         if (_enabled)
@@ -369,11 +496,7 @@ internal sealed class PinController : IDisposable
             else
             {
                 _recoveryTimer.Stop();
-                _moveTimer.Stop();
-                _settleTimer.Stop();
-                _settleAttemptsRemaining = 0;
-                _overlay.HideOverlay();
-                _targetWindow = IntPtr.Zero;
+                ClearTarget();
             }
         }
     }
@@ -401,15 +524,17 @@ internal sealed class PinController : IDisposable
 
         if (!WindowFiltering.IsEligible(foregroundWindow))
         {
-            _targetWindow = IntPtr.Zero;
-            _overlay.HideOverlay();
+            ClearTarget();
             return;
         }
 
-        if (_targetWindow != foregroundWindow)
+        if (_targetWindow != foregroundWindow || _overlay.TargetWindow != foregroundWindow)
         {
+            _overlay.Detach();
+
             _targetWindow = foregroundWindow;
             _overlay.AttachTo(_targetWindow);
+
             ScheduleSettledRefresh();
         }
 
@@ -436,6 +561,41 @@ internal sealed class PinController : IDisposable
             return;
         }
 
+        if (eventType == NativeMethods.EventSystemMoveSizeStart)
+        {
+            if (window == IntPtr.Zero)
+            {
+                return;
+            }
+
+            PostToUi(() =>
+            {
+                if (_disposed || !_enabled)
+                {
+                    return;
+                }
+
+                var foregroundWindow = NativeMethods.GetForegroundWindow();
+
+                if (window != foregroundWindow || !WindowFiltering.IsEligible(window))
+                {
+                    return;
+                }
+
+                if (_targetWindow != window)
+                {
+                    _overlay.Detach();
+                    _targetWindow = window;
+                    _overlay.AttachTo(window);
+                }
+
+                _moveTimer.Start();
+                UpdateOverlayPosition();
+            });
+
+            return;
+        }
+
         if (window == IntPtr.Zero || window != _targetWindow)
         {
             return;
@@ -443,17 +603,6 @@ internal sealed class PinController : IDisposable
 
         switch (eventType)
         {
-            case NativeMethods.EventSystemMoveSizeStart:
-                PostToUi(() =>
-                {
-                    if (!_disposed && _enabled)
-                    {
-                        _moveTimer.Start();
-                        UpdateOverlayPosition();
-                    }
-                });
-                break;
-
             case NativeMethods.EventSystemMoveSizeEnd:
                 PostToUi(() =>
                 {
@@ -464,15 +613,28 @@ internal sealed class PinController : IDisposable
                 break;
 
             case NativeMethods.EventSystemMinimizeStart:
-            case NativeMethods.EventObjectHide:
-            case NativeMethods.EventObjectDestroy:
                 PostToUi(() =>
                 {
-                    _moveTimer.Stop();
-                    _settleTimer.Stop();
-                    _settleAttemptsRemaining = 0;
-                    _overlay.HideOverlay();
+                    if (window == _targetWindow)
+                    {
+                        ClearTarget();
+                    }
                 });
+                break;
+
+            case NativeMethods.EventObjectHide:
+            case NativeMethods.EventObjectDestroy:
+                if (objectId == NativeMethods.ObjIdWindow)
+                {
+                    PostToUi(() =>
+                    {
+                        if (window == _targetWindow)
+                        {
+                            ClearTarget();
+                            RefreshNow();
+                        }
+                    });
+                }
                 break;
 
             case NativeMethods.EventSystemMinimizeEnd:
@@ -495,6 +657,16 @@ internal sealed class PinController : IDisposable
                 }
                 break;
         }
+    }
+
+    private void ClearTarget()
+    {
+        _moveTimer.Stop();
+        _settleTimer.Stop();
+        _settleAttemptsRemaining = 0;
+
+        _targetWindow = IntPtr.Zero;
+        _overlay.Detach();
     }
 
     private void ScheduleSettledRefresh(int attempts = 8)
@@ -644,6 +816,7 @@ internal sealed class PinOverlayForm : Form
     }
 
     public bool IsOverlayVisible => IsHandleCreated && NativeMethods.IsWindowVisible(Handle);
+    public IntPtr TargetWindow => _targetWindow;
     protected override bool ShowWithoutActivation => true;
 
     protected override CreateParams CreateParams
@@ -672,11 +845,6 @@ internal sealed class PinOverlayForm : Form
         _targetWindow = targetWindow;
         _visualStyle = WindowProfiles.GetVisualStyle(targetWindow);
 
-        if (targetWindow != IntPtr.Zero)
-        {
-            NativeMethods.SetWindowOwner(Handle, targetWindow);
-        }
-
         UpdateFromTarget();
     }
 
@@ -702,35 +870,72 @@ internal sealed class PinOverlayForm : Form
             return;
         }
 
+        var isPinned = WindowPinning.IsTopMost(_targetWindow);
+
+        var needsRender =
+            _lastBounds != bounds
+            || _isDarkTitleBar != isDarkTitleBar
+            || _isPinned != isPinned
+            || !IsOverlayVisible;
+
         _lastBounds = bounds;
         _isDarkTitleBar = isDarkTitleBar;
-        _isPinned = WindowPinning.IsTopMost(_targetWindow);
+        _isPinned = isPinned;
 
-        // При максимизации Windows может пересобрать non-client area
-        // и временно изменить порядок owned-окон.
-        NativeMethods.SetWindowOwner(Handle, _targetWindow);
-
-        _toolTip.SetToolTip(this, _isPinned ? "Открепить окно" : "Закрепить поверх остальных окон");
-
-        RenderLayeredWindow(bounds);
+        _toolTip.SetToolTip(
+            this,
+            _isPinned
+                ? AppLocalization.Text("Открепить окно", "Unpin window")
+                : AppLocalization.Text(
+                    "Закрепить поверх остальных окон",
+                    "Keep window always on top"
+                )
+        );
+        if (needsRender)
+        {
+            RenderLayeredWindow(bounds);
+        }
 
         // Возвращаем overlay над окном-владельцем после максимизации,
         // не активируя саму кнопку и не забирая фокус.
+        var overlayFlags =
+            NativeMethods.SwpNoMove
+            | NativeMethods.SwpNoSize
+            | NativeMethods.SwpNoActivate
+            | NativeMethods.SwpShowWindow;
+
+        // Синхронизируем группу Z-order с целевым окном.
         NativeMethods.SetWindowPos(
             Handle,
-            NativeMethods.HwndTop,
+            _isPinned ? NativeMethods.HwndTopmost : NativeMethods.HwndNotTopmost,
             0,
             0,
             0,
             0,
-            NativeMethods.SwpNoMove
-                | NativeMethods.SwpNoSize
-                | NativeMethods.SwpNoActivate
-                | NativeMethods.SwpShowWindow
-                | NativeMethods.SwpNoOwnerZOrder
+            overlayFlags
         );
 
-        if (!Visible)
+        // Находим окно, расположенное непосредственно над целевым.
+        var windowAboveTarget = NativeMethods.GetWindow(_targetWindow, NativeMethods.GwHwndPrev);
+
+        // Размещаем иконку между целевым окном и окном над ним.
+        if (windowAboveTarget != IntPtr.Zero && windowAboveTarget != Handle)
+        {
+            NativeMethods.SetWindowPos(Handle, windowAboveTarget, 0, 0, 0, 0, overlayFlags);
+        }
+        else if (windowAboveTarget == IntPtr.Zero)
+        {
+            NativeMethods.SetWindowPos(
+                Handle,
+                _isPinned ? NativeMethods.HwndTopmost : NativeMethods.HwndTop,
+                0,
+                0,
+                0,
+                0,
+                overlayFlags
+            );
+        }
+        if (!IsOverlayVisible)
         {
             NativeMethods.ShowWindow(Handle, NativeMethods.SwShowNoActivate);
         }
@@ -738,10 +943,21 @@ internal sealed class PinOverlayForm : Form
 
     public void HideOverlay()
     {
-        if (IsHandleCreated && Visible)
+        if (IsHandleCreated && !IsDisposed && NativeMethods.IsWindowVisible(Handle))
         {
             NativeMethods.ShowWindow(Handle, NativeMethods.SwHide);
         }
+    }
+
+    public void Detach()
+    {
+        HideOverlay();
+
+        _targetWindow = IntPtr.Zero;
+        _lastBounds = Rectangle.Empty;
+        _isPinned = false;
+        _isHovered = false;
+        _visualStyle = OverlayVisualStyle.Default;
     }
 
     protected override void OnMouseEnter(EventArgs eventArgs)
@@ -1592,14 +1808,21 @@ internal static class WindowPinning
     {
         if (window == IntPtr.Zero || !NativeMethods.IsWindow(window))
         {
-            return ToggleResult.Error("Окно не найдено.");
+            return ToggleResult.Error(
+                AppLocalization.Text("Окно не найдено.", "Window not found.")
+            );
         }
 
         var className = WindowText.GetClassName(window);
 
         if (className is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd")
         {
-            return ToggleResult.Error("Рабочий стол и панель задач закреплять нельзя.");
+            return ToggleResult.Error(
+                AppLocalization.Text(
+                    "Рабочий стол и панель задач закреплять нельзя.",
+                    "The desktop and taskbar cannot be pinned."
+                )
+            );
         }
 
         var wasTopMost = IsTopMost(window);
@@ -1620,13 +1843,19 @@ internal static class WindowPinning
         {
             var error = new Win32Exception(Marshal.GetLastWin32Error());
 
-            return ToggleResult.Error($"Windows не разрешила изменить окно: {error.Message}");
+            return ToggleResult.Error(
+                AppLocalization.Text(
+                    $"Windows не разрешила изменить окно: {error.Message}",
+                    $"Windows did not allow the window to be changed: {error.Message}"
+                )
+            );
         }
 
         var title = WindowText.GetWindowTitle(window);
 
-        var action = wasTopMost ? "Откреплено" : "Закреплено поверх окон";
-
+        var action = wasTopMost
+            ? AppLocalization.Text("Откреплено", "Unpinned")
+            : AppLocalization.Text("Закреплено поверх окон", "Pinned on top");
         return ToggleResult.Ok($"{action}: {title}");
     }
 
@@ -1683,6 +1912,8 @@ internal readonly record struct ToggleResult(bool Success, string Message)
 internal static class NativeMethods
 {
     internal static readonly IntPtr HwndTop = IntPtr.Zero;
+    internal static readonly IntPtr HwndTopmost = new(-1);
+    internal static readonly IntPtr HwndNotTopmost = new(-2);
 
     internal const int SwHide = 0;
     internal const int SwShowNoActivate = 4;
@@ -1692,6 +1923,7 @@ internal static class NativeMethods
     internal const uint SwpNoActivate = 0x0010;
     internal const uint SwpShowWindow = 0x0040;
     internal const uint SwpNoOwnerZOrder = 0x0200;
+    internal const uint GwHwndPrev = 3;
 
     internal const uint EventSystemForeground = 0x0003;
     internal const uint EventSystemMoveSizeStart = 0x000A;
@@ -1784,6 +2016,9 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     internal static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    internal static extern IntPtr GetWindow(IntPtr window, uint command);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

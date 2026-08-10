@@ -21,17 +21,16 @@ internal sealed class SettingsForm : Form
     private readonly CheckBox _showButtonCheckBox;
     private readonly CheckBox _notificationsCheckBox;
     private readonly CheckBox _autostartCheckBox;
+    private readonly ComboBox _languageComboBox;
 
     private Color _selectedColor;
 
-    public SettingsForm(
-        AppSettings settings,
-        Func<AppSettings, string?> applySettings)
+    public SettingsForm(AppSettings settings, Func<AppSettings, string?> applySettings)
     {
         _applySettings = applySettings;
         _selectedColor = settings.GetActiveColor();
 
-        Text = "Настройки PinWindow";
+        Text = AppLocalization.Text("Настройки PinWindow", "PinWindow Settings");
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -46,30 +45,34 @@ internal sealed class SettingsForm : Form
             Dock = DockStyle.Fill,
             Padding = new Padding(18),
             ColumnCount = 1,
-            RowCount = 4,
-            AutoSize = false
+            RowCount = 5,
+            AutoSize = false,
         };
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         Controls.Add(root);
 
         var heading = new Label
         {
-            Text = "Настройки PinWindow",
+            Text = AppLocalization.Text("Настройки PinWindow", "PinWindow Settings"),
             AutoSize = true,
             Font = new Font(Font.FontFamily, 16F, FontStyle.Bold),
-            Margin = new Padding(0, 0, 0, 4)
+            Margin = new Padding(0, 0, 0, 4),
         };
         root.Controls.Add(heading);
 
         var subtitle = new Label
         {
-            Text = "Изменения сохраняются в %AppData%\\PinWindow\\settings.json",
+            Text = AppLocalization.Text(
+                "Изменения сохраняются в %AppData%\\PinWindow\\settings.json",
+                "Settings are saved to %AppData%\\PinWindow\\settings.json"
+            ),
             AutoSize = true,
             ForeColor = SystemColors.GrayText,
-            Margin = new Padding(0, 0, 0, 14)
+            Margin = new Padding(0, 0, 0, 14),
         };
         root.Controls.Add(subtitle);
 
@@ -79,7 +82,7 @@ internal sealed class SettingsForm : Form
             ColumnCount = 1,
             RowCount = 3,
             AutoScroll = true,
-            Margin = Padding.Empty
+            Margin = Padding.Empty,
         };
         content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -88,12 +91,12 @@ internal sealed class SettingsForm : Form
 
         var hotkeyGroup = new GroupBox
         {
-            Text = "Горячая клавиша",
+            Text = AppLocalization.Text("Горячая клавиша", "Keyboard shortcut"),
             Dock = DockStyle.Top,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Padding = new Padding(12),
-            Margin = new Padding(0, 0, 0, 12)
+            Margin = new Padding(0, 0, 0, 12),
         };
         content.Controls.Add(hotkeyGroup);
 
@@ -102,7 +105,7 @@ internal sealed class SettingsForm : Form
             Dock = DockStyle.Fill,
             AutoSize = true,
             WrapContents = false,
-            FlowDirection = FlowDirection.LeftToRight
+            FlowDirection = FlowDirection.LeftToRight,
         };
         hotkeyGroup.Controls.Add(hotkeyLayout);
 
@@ -120,7 +123,7 @@ internal sealed class SettingsForm : Form
         {
             DropDownStyle = ComboBoxStyle.DropDownList,
             Width = 125,
-            Margin = new Padding(12, 3, 0, 3)
+            Margin = new Padding(12, 3, 0, 3),
         };
 
         foreach (var option in CreateKeyOptions())
@@ -129,20 +132,19 @@ internal sealed class SettingsForm : Form
         }
 
         var selectedKeyIndex = FindKeyIndex((Keys)settings.HotkeyKey);
-        _keyComboBox.SelectedIndex = selectedKeyIndex >= 0
-            ? selectedKeyIndex
-            : FindKeyIndex(Keys.T);
+        _keyComboBox.SelectedIndex =
+            selectedKeyIndex >= 0 ? selectedKeyIndex : FindKeyIndex(Keys.T);
 
         hotkeyLayout.Controls.Add(_keyComboBox);
 
         var appearanceGroup = new GroupBox
         {
-            Text = "Внешний вид булавки",
+            Text = AppLocalization.Text("Внешний вид булавки", "Pin appearance"),
             Dock = DockStyle.Top,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Padding = new Padding(12),
-            Margin = new Padding(0, 0, 0, 12)
+            Margin = new Padding(0, 0, 0, 12),
         };
         content.Controls.Add(appearanceGroup);
 
@@ -151,7 +153,7 @@ internal sealed class SettingsForm : Form
             Dock = DockStyle.Fill,
             AutoSize = true,
             ColumnCount = 2,
-            RowCount = 4
+            RowCount = 4,
         };
         appearanceGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 62));
         appearanceGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 38));
@@ -161,29 +163,47 @@ internal sealed class SettingsForm : Form
         _offsetXInput = CreateNumberInput(-80, 80, settings.OffsetX);
         _offsetYInput = CreateNumberInput(-80, 80, settings.OffsetY);
 
-        AddSettingRow(appearanceGrid, 0, "Размер кнопки", _pinSizeInput);
-        AddSettingRow(appearanceGrid, 1, "Смещение по горизонтали", _offsetXInput);
-        AddSettingRow(appearanceGrid, 2, "Смещение по вертикали", _offsetYInput);
-
+        AddSettingRow(
+            appearanceGrid,
+            0,
+            AppLocalization.Text("Размер кнопки", "Button size"),
+            _pinSizeInput
+        );
+        AddSettingRow(
+            appearanceGrid,
+            1,
+            AppLocalization.Text("Смещение по горизонтали", "Horizontal offset"),
+            _offsetXInput
+        );
+        AddSettingRow(
+            appearanceGrid,
+            2,
+            AppLocalization.Text("Смещение по вертикали", "Vertical offset"),
+            _offsetYInput
+        );
         _colorButton = new Button
         {
             Text = AppSettings.ColorToHtml(_selectedColor),
             Width = 125,
             Height = 30,
-            FlatStyle = FlatStyle.Flat
+            FlatStyle = FlatStyle.Flat,
         };
         _colorButton.Click += (_, _) => SelectColor();
         UpdateColorButton();
-        AddSettingRow(appearanceGrid, 3, "Цвет закреплённой булавки", _colorButton);
-
+        AddSettingRow(
+            appearanceGrid,
+            3,
+            AppLocalization.Text("Цвет закреплённой булавки", "Pinned icon color"),
+            _colorButton
+        );
         var behaviorGroup = new GroupBox
         {
-            Text = "Поведение",
+            Text = AppLocalization.Text("Поведение", "Behavior"),
             Dock = DockStyle.Top,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Padding = new Padding(12),
-            Margin = new Padding(0)
+            Margin = new Padding(0),
         };
         content.Controls.Add(behaviorGroup);
 
@@ -192,25 +212,137 @@ internal sealed class SettingsForm : Form
             Dock = DockStyle.Fill,
             AutoSize = true,
             FlowDirection = FlowDirection.TopDown,
-            WrapContents = false
+            WrapContents = false,
         };
         behaviorGroup.Controls.Add(behaviorLayout);
 
+        var languageLayout = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Margin = new Padding(0, 0, 0, 8),
+        };
+
+        var languageLabel = new Label
+        {
+            Text = "Язык интерфейса:",
+            AutoSize = true,
+            Margin = new Padding(0, 7, 10, 0),
+        };
+
+        _languageComboBox = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Width = 125,
+            Margin = new Padding(0, 3, 0, 3),
+        };
+
+        _languageComboBox.Items.Add("Русский");
+        _languageComboBox.Items.Add("English");
+
+        _languageComboBox.SelectedIndex = settings.Language.Equals(
+            "en",
+            StringComparison.OrdinalIgnoreCase
+        )
+            ? 1
+            : 0;
+
+        languageLayout.Controls.Add(languageLabel);
+        languageLayout.Controls.Add(_languageComboBox);
+
+        behaviorLayout.Controls.Add(languageLayout);
+
         _showButtonCheckBox = CreateBehaviorCheckBox(
-            "Показывать кнопку у активного окна",
-            settings.ShowButton);
+            AppLocalization.Text(
+                "Показывать кнопку у активного окна",
+                "Show button near active window"
+            ),
+            settings.ShowButton
+        );
 
         _notificationsCheckBox = CreateBehaviorCheckBox(
-            "Показывать уведомления",
-            settings.ShowNotifications);
+            AppLocalization.Text("Показывать уведомления", "Show notifications"),
+            settings.ShowNotifications
+        );
 
         _autostartCheckBox = CreateBehaviorCheckBox(
-            "Запускать PinWindow вместе с Windows",
-            settings.StartWithWindows);
+            AppLocalization.Text(
+                "Запускать PinWindow вместе с Windows",
+                "Run PinWindow with Windows"
+            ),
+            settings.StartWithWindows
+        );
 
         behaviorLayout.Controls.Add(_showButtonCheckBox);
         behaviorLayout.Controls.Add(_notificationsCheckBox);
         behaviorLayout.Controls.Add(_autostartCheckBox);
+
+        var assemblyVersion = typeof(SettingsForm).Assembly.GetName().Version;
+
+        var versionText = assemblyVersion is null
+            ? "неизвестна"
+            : $"{assemblyVersion.Major}.{assemblyVersion.Minor}.{Math.Max(0, assemblyVersion.Build)}";
+
+        var versionPanel = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Margin = new Padding(0, 10, 0, 0),
+        };
+
+        var versionLabel = new Label
+        {
+            Text = $"PinWindow v{versionText}",
+            AutoSize = true,
+            ForeColor = SystemColors.GrayText,
+            Margin = new Padding(0, 3, 0, 0),
+        };
+
+        var projectLink = new LinkLabel
+        {
+            Text = "GitHub",
+            AutoSize = true,
+            LinkBehavior = LinkBehavior.HoverUnderline,
+            Margin = new Padding(10, 3, 0, 0),
+        };
+
+        projectLink.LinkClicked += (_, _) =>
+        {
+            System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "https://github.com/helliong/pinWindow",
+                    UseShellExecute = true,
+                }
+            );
+        };
+
+        var bugReportLink = new LinkLabel
+        {
+            Text = AppLocalization.Text("Сообщить об ошибке", "Bug report"),
+            AutoSize = true,
+            LinkBehavior = LinkBehavior.HoverUnderline,
+            Margin = new Padding(10, 3, 0, 0),
+        };
+
+        bugReportLink.LinkClicked += (_, _) =>
+        {
+            System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "https://github.com/helliong/pinWindow/issues/new",
+                    UseShellExecute = true,
+                }
+            );
+        };
+
+        versionPanel.Controls.Add(versionLabel);
+        versionPanel.Controls.Add(projectLink);
+        versionPanel.Controls.Add(bugReportLink);
+
+        root.Controls.Add(versionPanel);
 
         var buttonPanel = new FlowLayoutPanel
         {
@@ -218,32 +350,32 @@ internal sealed class SettingsForm : Form
             AutoSize = true,
             FlowDirection = FlowDirection.RightToLeft,
             WrapContents = false,
-            Padding = new Padding(0, 14, 0, 0)
+            Padding = new Padding(0, 14, 0, 0),
         };
         root.Controls.Add(buttonPanel);
 
         var saveButton = new Button
         {
-            Text = "Сохранить",
+            Text = AppLocalization.Text("Сохранить", "Save"),
             AutoSize = true,
-            Padding = new Padding(12, 3, 12, 3)
+            Padding = new Padding(12, 3, 12, 3),
         };
         saveButton.Click += (_, _) => SaveSettings();
 
         var cancelButton = new Button
         {
-            Text = "Отмена",
+            Text = AppLocalization.Text("Отмена", "Cancel"),
             DialogResult = DialogResult.Cancel,
             AutoSize = true,
-            Padding = new Padding(12, 3, 12, 3)
+            Padding = new Padding(12, 3, 12, 3),
         };
 
         var defaultsButton = new Button
         {
-            Text = "По умолчанию",
+            Text = AppLocalization.Text("По умолчанию", "Defaults"),
             AutoSize = true,
             Padding = new Padding(8, 3, 8, 3),
-            Margin = new Padding(0, 0, 16, 0)
+            Margin = new Padding(0, 0, 16, 0),
         };
         defaultsButton.Click += (_, _) => LoadValues(AppSettings.CreateDefault());
 
@@ -255,46 +387,40 @@ internal sealed class SettingsForm : Form
         CancelButton = cancelButton;
     }
 
-    private static CheckBox CreateModifierCheckBox(
-        string text,
-        bool isChecked) =>
+    private static CheckBox CreateModifierCheckBox(string text, bool isChecked) =>
         new()
         {
             Text = text,
             Checked = isChecked,
             AutoSize = true,
-            Margin = new Padding(0, 6, 12, 3)
+            Margin = new Padding(0, 6, 12, 3),
         };
 
-    private static CheckBox CreateBehaviorCheckBox(
-        string text,
-        bool isChecked) =>
+    private static CheckBox CreateBehaviorCheckBox(string text, bool isChecked) =>
         new()
         {
             Text = text,
             Checked = isChecked,
             AutoSize = true,
-            Margin = new Padding(0, 3, 0, 8)
+            Margin = new Padding(0, 3, 0, 8),
         };
 
-    private static NumericUpDown CreateNumberInput(
-        int minimum,
-        int maximum,
-        int value) =>
+    private static NumericUpDown CreateNumberInput(int minimum, int maximum, int value) =>
         new()
         {
             Minimum = minimum,
             Maximum = maximum,
             Value = Math.Clamp(value, minimum, maximum),
             Width = 125,
-            TextAlign = HorizontalAlignment.Right
+            TextAlign = HorizontalAlignment.Right,
         };
 
     private static void AddSettingRow(
         TableLayoutPanel grid,
         int row,
         string labelText,
-        Control control)
+        Control control
+    )
     {
         grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
@@ -303,7 +429,7 @@ internal sealed class SettingsForm : Form
             Text = labelText,
             AutoSize = true,
             Anchor = AnchorStyles.Left,
-            Margin = new Padding(0, 7, 8, 8)
+            Margin = new Padding(0, 7, 8, 8),
         };
 
         control.Anchor = AnchorStyles.Right;
@@ -346,8 +472,7 @@ internal sealed class SettingsForm : Form
     {
         for (var index = 0; index < _keyComboBox.Items.Count; index++)
         {
-            if (_keyComboBox.Items[index] is HotkeyKeyOption option &&
-                option.Key == key)
+            if (_keyComboBox.Items[index] is HotkeyKeyOption option && option.Key == key)
             {
                 return index;
             }
@@ -362,7 +487,7 @@ internal sealed class SettingsForm : Form
         {
             Color = _selectedColor,
             FullOpen = true,
-            AnyColor = true
+            AnyColor = true,
         };
 
         if (dialog.ShowDialog(this) != DialogResult.OK)
@@ -384,27 +509,26 @@ internal sealed class SettingsForm : Form
 
     private static Color GetContrastingTextColor(Color color)
     {
-        var luminance =
-            0.299 * color.R +
-            0.587 * color.G +
-            0.114 * color.B;
+        var luminance = 0.299 * color.R + 0.587 * color.G + 0.114 * color.B;
 
-        return luminance > 150
-            ? Color.Black
-            : Color.White;
+        return luminance > 150 ? Color.Black : Color.White;
     }
 
     private void LoadValues(AppSettings settings)
     {
+        _languageComboBox.SelectedIndex = settings.Language.Equals(
+            "en",
+            StringComparison.OrdinalIgnoreCase
+        )
+            ? 1
+            : 0;
         _controlCheckBox.Checked = settings.HotkeyControl;
         _altCheckBox.Checked = settings.HotkeyAlt;
         _shiftCheckBox.Checked = settings.HotkeyShift;
         _winCheckBox.Checked = settings.HotkeyWin;
 
         var index = FindKeyIndex((Keys)settings.HotkeyKey);
-        _keyComboBox.SelectedIndex = index >= 0
-            ? index
-            : FindKeyIndex(Keys.T);
+        _keyComboBox.SelectedIndex = index >= 0 ? index : FindKeyIndex(Keys.T);
 
         _pinSizeInput.Value = settings.PinSize;
         _offsetXInput.Value = settings.OffsetX;
@@ -420,17 +544,23 @@ internal sealed class SettingsForm : Form
 
     private void SaveSettings()
     {
-        if (!_controlCheckBox.Checked &&
-            !_altCheckBox.Checked &&
-            !_shiftCheckBox.Checked &&
-            !_winCheckBox.Checked)
+        if (
+            !_controlCheckBox.Checked
+            && !_altCheckBox.Checked
+            && !_shiftCheckBox.Checked
+            && !_winCheckBox.Checked
+        )
         {
             MessageBox.Show(
                 this,
-                "Выберите хотя бы один модификатор: Ctrl, Alt, Shift или Win.",
-                "Горячая клавиша",
+                AppLocalization.Text(
+                    "Выберите хотя бы один модификатор: Ctrl, Alt, Shift или Win.",
+                    "Select at least one modifier: Ctrl, Alt, Shift, or Win."
+                ),
+                AppLocalization.Text("Горячая клавиша", "Keyboard shortcut"),
                 MessageBoxButtons.OK,
-                MessageBoxIcon.Warning);
+                MessageBoxIcon.Warning
+            );
             return;
         }
 
@@ -438,15 +568,17 @@ internal sealed class SettingsForm : Form
         {
             MessageBox.Show(
                 this,
-                "Выберите клавишу.",
-                "Горячая клавиша",
+                AppLocalization.Text("Выберите клавишу.", "Select a key."),
+                AppLocalization.Text("Горячая клавиша", "Keyboard shortcut"),
                 MessageBoxButtons.OK,
-                MessageBoxIcon.Warning);
+                MessageBoxIcon.Warning
+            );
             return;
         }
 
         var settings = new AppSettings
         {
+            Language = _languageComboBox.SelectedIndex == 1 ? "en" : "ru",
             ShowButton = _showButtonCheckBox.Checked,
             ShowNotifications = _notificationsCheckBox.Checked,
             StartWithWindows = _autostartCheckBox.Checked,
@@ -458,7 +590,7 @@ internal sealed class SettingsForm : Form
             HotkeyAlt = _altCheckBox.Checked,
             HotkeyShift = _shiftCheckBox.Checked,
             HotkeyWin = _winCheckBox.Checked,
-            HotkeyKey = (int)keyOption.Key
+            HotkeyKey = (int)keyOption.Key,
         };
 
         var error = _applySettings(settings);
@@ -468,9 +600,10 @@ internal sealed class SettingsForm : Form
             MessageBox.Show(
                 this,
                 error,
-                "Не удалось сохранить настройки",
+                AppLocalization.Text("Не удалось сохранить настройки", "Failed to save settings"),
                 MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
+                MessageBoxIcon.Error
+            );
             return;
         }
 
@@ -487,7 +620,6 @@ internal sealed class SettingsForm : Form
 
         public Keys Key { get; }
 
-        public override string ToString() =>
-            HotkeyKeyNames.ToDisplayName(Key);
+        public override string ToString() => HotkeyKeyNames.ToDisplayName(Key);
     }
 }

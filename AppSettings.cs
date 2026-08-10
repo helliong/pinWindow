@@ -1,6 +1,4 @@
-using System.Drawing;
 using System.Text.Json;
-using System.Windows.Forms;
 using Microsoft.Win32;
 
 namespace PinWindow;
@@ -10,6 +8,7 @@ internal sealed class AppSettings
     public bool ShowButton { get; set; } = true;
     public bool ShowNotifications { get; set; } = true;
     public bool StartWithWindows { get; set; }
+    public string Language { get; set; } = "ru";
 
     public int PinSize { get; set; } = 27;
     public int OffsetX { get; set; }
@@ -28,6 +27,7 @@ internal sealed class AppSettings
             ShowButton = ShowButton,
             ShowNotifications = ShowNotifications,
             StartWithWindows = StartWithWindows,
+            Language = Language,
             PinSize = PinSize,
             OffsetX = OffsetX,
             OffsetY = OffsetY,
@@ -36,12 +36,15 @@ internal sealed class AppSettings
             HotkeyAlt = HotkeyAlt,
             HotkeyShift = HotkeyShift,
             HotkeyWin = HotkeyWin,
-            HotkeyKey = HotkeyKey
+            HotkeyKey = HotkeyKey,
         };
 
     public void Normalize()
     {
+        Language = Language.Equals("en", StringComparison.OrdinalIgnoreCase) ? "en" : "ru";
+
         PinSize = Math.Clamp(PinSize, 20, 42);
+
         OffsetX = Math.Clamp(OffsetX, -80, 80);
         OffsetY = Math.Clamp(OffsetY, -80, 80);
 
@@ -76,17 +79,11 @@ internal sealed class AppSettings
     }
 
     public HotkeyDefinition GetHotkey() =>
-        new(
-            HotkeyControl,
-            HotkeyAlt,
-            HotkeyShift,
-            HotkeyWin,
-            (Keys)HotkeyKey);
+        new(HotkeyControl, HotkeyAlt, HotkeyShift, HotkeyWin, (Keys)HotkeyKey);
 
     public static AppSettings CreateDefault() => new();
 
-    public static string ColorToHtml(Color color) =>
-        $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+    public static string ColorToHtml(Color color) => $"#{color.R:X2}{color.G:X2}{color.B:X2}";
 }
 
 internal readonly record struct HotkeyDefinition(
@@ -94,7 +91,8 @@ internal readonly record struct HotkeyDefinition(
     bool Alt,
     bool Shift,
     bool Win,
-    Keys Key)
+    Keys Key
+)
 {
     private const uint ModAlt = 0x0001;
     private const uint ModControl = 0x0002;
@@ -102,10 +100,10 @@ internal readonly record struct HotkeyDefinition(
     private const uint ModWin = 0x0008;
 
     public uint NativeModifiers =>
-        (Control ? ModControl : 0) |
-        (Alt ? ModAlt : 0) |
-        (Shift ? ModShift : 0) |
-        (Win ? ModWin : 0);
+        (Control ? ModControl : 0)
+        | (Alt ? ModAlt : 0)
+        | (Shift ? ModShift : 0)
+        | (Win ? ModWin : 0);
 
     public string DisplayText
     {
@@ -113,10 +111,14 @@ internal readonly record struct HotkeyDefinition(
         {
             var parts = new List<string>();
 
-            if (Control) parts.Add("Ctrl");
-            if (Alt) parts.Add("Alt");
-            if (Shift) parts.Add("Shift");
-            if (Win) parts.Add("Win");
+            if (Control)
+                parts.Add("Ctrl");
+            if (Alt)
+                parts.Add("Alt");
+            if (Shift)
+                parts.Add("Shift");
+            if (Win)
+                parts.Add("Win");
 
             parts.Add(HotkeyKeyNames.ToDisplayName(Key));
             return string.Join(" + ", parts);
@@ -149,26 +151,25 @@ internal static class HotkeyKeyNames
             Keys.End => "End",
             Keys.PageUp => "Page Up",
             Keys.PageDown => "Page Down",
-            _ => key.ToString()
+            _ => key.ToString(),
         };
     }
 }
 
 internal static class SettingsStore
 {
-    private static readonly JsonSerializerOptions JsonOptions =
-        new()
-        {
-            WriteIndented = true,
-            PropertyNameCaseInsensitive = true
-        };
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+        PropertyNameCaseInsensitive = true,
+    };
 
     public static string SettingsPath =>
         Path.Combine(
-            Environment.GetFolderPath(
-                Environment.SpecialFolder.ApplicationData),
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "PinWindow",
-            "settings.json");
+            "settings.json"
+        );
 
     public static AppSettings Load()
     {
@@ -183,9 +184,9 @@ internal static class SettingsStore
             else
             {
                 var json = File.ReadAllText(SettingsPath);
-                settings = JsonSerializer.Deserialize<AppSettings>(
-                    json,
-                    JsonOptions) ?? AppSettings.CreateDefault();
+                settings =
+                    JsonSerializer.Deserialize<AppSettings>(json, JsonOptions)
+                    ?? AppSettings.CreateDefault();
             }
         }
         catch
@@ -202,9 +203,9 @@ internal static class SettingsStore
     {
         settings.Normalize();
 
-        var directory = Path.GetDirectoryName(SettingsPath)
-            ?? throw new InvalidOperationException(
-                "Не удалось определить папку настроек.");
+        var directory =
+            Path.GetDirectoryName(SettingsPath)
+            ?? throw new InvalidOperationException("Не удалось определить папку настроек.");
 
         Directory.CreateDirectory(directory);
 
@@ -218,8 +219,7 @@ internal static class SettingsStore
 
 internal static class AutostartManager
 {
-    private const string RunKeyPath =
-        @"Software\Microsoft\Windows\CurrentVersion\Run";
+    private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
 
     private const string ValueName = "PinWindow";
 
@@ -228,8 +228,7 @@ internal static class AutostartManager
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath);
-            return key?.GetValue(ValueName) is string value &&
-                   !string.IsNullOrWhiteSpace(value);
+            return key?.GetValue(ValueName) is string value && !string.IsNullOrWhiteSpace(value);
         }
         catch
         {
@@ -239,9 +238,11 @@ internal static class AutostartManager
 
     public static void SetEnabled(bool enabled)
     {
-        using var key = Registry.CurrentUser.CreateSubKey(RunKeyPath)
+        using var key =
+            Registry.CurrentUser.CreateSubKey(RunKeyPath)
             ?? throw new InvalidOperationException(
-                "Windows не разрешила изменить настройки автозапуска.");
+                "Windows не разрешила изменить настройки автозапуска."
+            );
 
         if (!enabled)
         {
@@ -251,16 +252,11 @@ internal static class AutostartManager
 
         var executablePath = Application.ExecutablePath;
 
-        if (string.IsNullOrWhiteSpace(executablePath) ||
-            !File.Exists(executablePath))
+        if (string.IsNullOrWhiteSpace(executablePath) || !File.Exists(executablePath))
         {
-            throw new InvalidOperationException(
-                "Не удалось определить путь к PinWindow.exe.");
+            throw new InvalidOperationException("Не удалось определить путь к PinWindow.exe.");
         }
 
-        key.SetValue(
-            ValueName,
-            $"\"{executablePath}\"",
-            RegistryValueKind.String);
+        key.SetValue(ValueName, $"\"{executablePath}\"", RegistryValueKind.String);
     }
 }
