@@ -66,8 +66,14 @@ internal static class UpdateChecker
 
         var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
 
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("PinWindow/3.3.3");
+        var appVersion = typeof(UpdateChecker).Assembly.GetName().Version;
 
+        var versionText =
+            appVersion is null ? "unknown"
+            : appVersion.Build >= 0 ? $"{appVersion.Major}.{appVersion.Minor}.{appVersion.Build}"
+            : $"{appVersion.Major}.{appVersion.Minor}";
+
+        client.DefaultRequestHeaders.UserAgent.ParseAdd($"PinWindow/{versionText}");
         return client;
     }
 }
