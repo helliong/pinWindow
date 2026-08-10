@@ -23,43 +23,60 @@ You can pin or unpin the active window using a small button near its title bar, 
 
 ## Features
 
-- Keep any supported application window always on top
+- Keep supported application windows always on top
 - Pin button near the active window title bar
 - Configurable global keyboard shortcut
 - Pin or unpin the active window from the system tray
-- Customizable pin button size
-- Customizable active pin color
+- Customizable pin button size and active color
 - Adjustable horizontal and vertical button position
 - Optional startup with Windows
+- Russian and English interface languages
+- Automatic update checks
+- Custom update notification window
+- GitHub and Bug Report links in Settings
 - Desktop notifications
 - Lightweight background operation
-- Portable single-file application
+- Installer and portable release options
 - Support for Windows 10 and Windows 11
-- No separate .NET installation required
+- No separate .NET installation required for the portable version
 
 ## Download
 
-Download the latest version of PinWindow from:
+Download the latest PinWindow release from:
 
-- [SourceForge](https://sourceforge.net/projects/pinwindow/)
 - [GitHub Releases](https://github.com/helliong/pinWindow/releases/latest)
+- [SourceForge](https://sourceforge.net/projects/pinwindow/files/)
 
-For most users, the SourceForge download is recommended:
+Available downloads:
 
-[Download the latest version](https://sourceforge.net/projects/pinwindow/files/latest/download)
+| File                                    | Description                     |      Size |
+| --------------------------------------- | ------------------------------- | --------: |
+| `PinWindowSetup-v3.3.3-win-x64.exe`     | Lightweight installer           |  ~2.07 MB |
+| `PinWindow-v3.3.3-portable-win-x64.exe` | Self-contained portable version | ~68.33 MB |
+| `SHA256SUMS.txt`                        | SHA-256 checksums               |         — |
+
+The installer is recommended for most users.
 
 ## Installation
 
-PinWindow does not require installation.
+### Installer
 
-1. Download the latest `PinWindow.exe` release.
+1. Download `PinWindowSetup-v3.3.3-win-x64.exe`.
+2. Run the installer.
+3. Select the installation folder and additional options.
+4. Complete the installation and launch PinWindow.
+
+If .NET 8 Desktop Runtime is missing, the installer will download it from Microsoft. An internet connection may be required.
+
+### Portable Version
+
+1. Download `PinWindow-v3.3.3-portable-win-x64.exe`.
 2. Move the file to any convenient folder.
 3. Run the application.
-4. The PinWindow icon will appear in the Windows system tray.
 
-Windows may display a Microsoft Defender SmartScreen warning because the application is not digitally signed.
+The portable version includes all required .NET components and does not require installation.
 
-Only run the application when it was downloaded from the official GitHub repository or SourceForge project page.
+Microsoft Defender SmartScreen may display a warning because the application is not digitally signed. Only run files downloaded from the official GitHub repository or SourceForge project page.
 
 ## How to Use
 
@@ -100,14 +117,16 @@ Double-click the tray icon to open the settings window.
 
 PinWindow allows you to configure:
 
+- Interface language: Russian or English
 - Global keyboard shortcut
 - Pin button visibility
 - Pin button size
 - Active pin color
-- Horizontal button offset
-- Vertical button offset
+- Horizontal and vertical button offsets
 - Desktop notifications
 - Automatic startup with Windows
+
+The Settings window also displays the installed PinWindow version and provides links to the GitHub repository and bug report page.
 
 Settings are saved for the current Windows user in:
 
@@ -115,67 +134,92 @@ Settings are saved for the current Windows user in:
 %AppData%\PinWindow\settings.json
 ```
 
+## Update Notifications
+
+PinWindow automatically checks whether a newer GitHub release is available.
+
+When an update is found, the application displays a dedicated update window with the installed and latest versions. The user can open the release download page or postpone the update.
+
+PinWindow does not install updates automatically.
+
 ## Portable Application
 
-PinWindow is distributed as a single executable file.
+The portable release is distributed as a single self-contained executable file. It can be launched from any folder or USB drive without installation.
 
-It does not require an installer and can be launched from:
-
-- Any folder on your computer
-- A USB drive
-- A portable applications directory
-
-The self-contained release includes all required .NET components.
+Settings are still stored separately in the current Windows user profile.
 
 ## System Requirements
 
 - Windows 10 or Windows 11
 - 64-bit Windows
-- Approximately 160 MB of free disk space
-- No separate .NET installation required for the self-contained release
+- Internet connection for update checks
+- The installer may require internet access to download .NET 8 Desktop Runtime
+- No separate .NET installation is required for the portable version
 
 ## Current Release
 
-### PinWindow v3.3.2
+### PinWindow v3.3.3
 
 Changes in this release:
 
-- Fixed an issue where the pin button could remain hidden after switching from Word, VS Code, or another unsupported window
-- Added automatic recovery of the pin button without restarting PinWindow
+- Fixed the pin button disappearing after switching between applications or File Explorer windows
+- Fixed overlay recovery after using Snipping Tool or closing Telegram
+- Fixed the pin icon remaining on the desktop after closing the target window
+- Fixed incorrect pin icon positioning when switching or moving windows
+- Added Russian and English interface languages
+- Added the application version, GitHub, and Bug Report links to Settings
+- Added automatic update checks and a custom update notification window
+- Improved overlay stability and rendering performance
 
-## SHA-256 Checksum
+## Release Files
 
-The SHA-256 checksum for the current release is:
+### Installer
 
 ```text
-D75DD20325F2F44CED8644CD37F06D99CE262EF07091CA6DDE18F8863351D637
+PinWindowSetup-v3.3.3-win-x64.exe
 ```
 
-The checksum applies to:
+A lightweight installer that downloads the .NET 8 Desktop Runtime from Microsoft if it is not already installed.
+
+### Portable Version
 
 ```text
-PinWindow-v3.3.2-win-x64.exe
+PinWindow-v3.3.3-portable-win-x64.exe
+```
+
+A self-contained portable version that does not require installation or a separate .NET runtime.
+
+## SHA-256 Checksums
+
+### Installer
+
+```text
+D5596EC14E42AB24E26E151D23035F56C792747D2AD426444738AF106BAAACB2
+```
+
+### Portable Version
+
+```text
+4022EC6323DCC6748B4A6FF35ECDBB2FA76F511AA8E124893598DBA3836AD14B
 ```
 
 ## Verify the Download
 
-Open PowerShell in the folder containing the downloaded file and run:
+Open PowerShell in the folder containing the downloaded files.
+
+Verify the installer:
 
 ```powershell
-Get-FileHash ".\PinWindow-v3.3.2-win-x64.exe" -Algorithm SHA256
+Get-FileHash ".\PinWindowSetup-v3.3.3-win-x64.exe" -Algorithm SHA256
 ```
 
-The returned hash should match:
-
-```text
-D75DD20325F2F44CED8644CD37F06D99CE262EF07091CA6DDE18F8863351D637
-```
-
-You can also use the Windows `certutil` command:
+Verify the portable version:
 
 ```powershell
-certutil -hashfile "PinWindow-v3.3.2-win-x64.exe" SHA256
+Get-FileHash ".\PinWindow-v3.3.3-portable-win-x64.exe" -Algorithm SHA256
 ```
+
+The returned hashes must match the checksums published above and in `SHA256SUMS.txt`.
 
 ## Source Code
 
@@ -205,6 +249,7 @@ When reporting a problem, please include:
 - Windows 10 or Windows 11
 - Git
 - .NET 8 SDK
+- Inno Setup 7 for building the installer
 
 Clone the repository:
 
@@ -213,28 +258,51 @@ git clone https://github.com/helliong/pinWindow.git
 cd pinWindow
 ```
 
-Run the application in development mode:
+Run PinWindow in development mode:
 
 ```powershell
 dotnet run
 ```
 
-Create a self-contained release build:
+Create a Release build:
 
 ```powershell
-dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true
+dotnet build -c Release
 ```
 
-The compiled executable will be located in:
+### Build the Installer
+
+```powershell
+powershell -ExecutionPolicy Bypass `
+    -File ".\scripts\publish-installer.ps1" `
+    -Version 3.3.3
+```
+
+The installer will be created in:
 
 ```text
-bin\Release\net8.0-windows\win-x64\publish\
+artifacts\installer\
 ```
 
-You can also use the included publishing script:
+### Build the Portable Version
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\publish.ps1
+dotnet publish `
+    -c Release `
+    -r win-x64 `
+    --self-contained true `
+    -p:PublishSingleFile=true `
+    -p:IncludeNativeLibrariesForSelfExtract=true `
+    -p:EnableCompressionInSingleFile=true `
+    -p:DebugType=None `
+    -p:DebugSymbols=false `
+    -o ".\artifacts\portable\publish"
+```
+
+The compiled executable will be created in:
+
+```text
+artifacts\portable\publish\
 ```
 
 ## Project Links
